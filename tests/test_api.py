@@ -79,3 +79,52 @@ def test_escenarios_predicen(client):
     assert r.status_code == 200, r.text
     assert len(r.json()["predicciones"]) == len(pet)
     assert client.get("/escenarios/no-existe").status_code == 404
+
+
+def test_tramos_con_coordenadas(client):
+    for t in client.get("/tramos").json():
+        assert 6.0 < t["lat"] < 6.5 and -75.8 < t["lon"] < -75.4, t["tramo_id"]
+
+
+def test_dias(client):
+    r = client.get("/dias")
+    assert r.status_code == 200
+    dias = r.json()
+    assert dias and {d["periodo"] for d in dias} <= {"test", "drift"}
+    assert all(d["colapsos_sin_aviso"] <= d["colapsos_reales"] for d in dias)
+    assert all(d["periodo"] == "test" for d in client.get("/dias?periodo=test").json())
+    assert client.get("/dias?periodo=xx").status_code == 422
+
+
+def test_replay_dia(client):
+    dia = max((d for d in client.get("/dias?periodo=test").json()), key=lambda d: d["colapsos_reales"])
+    r = client.get(f"/replay/{dia['fecha']}")
+    assert r.status_code == 200, r.text
+    b = r.json()
+    res = b["resumen"]
+    assert res["colapsos_reales"] == dia["colapsos_reales"]
+    assert res["detectados"] <= res["alertas"] and res["anticipados"] <= res["colapsos_sin_aviso"]
+    assert sum(h["anticipados"] for h in b["por_hora"]) == res["anticipados"]
+    assert len(b["tramos"]) == res["tramos"]
+    for t in b["tramos"]:
+        for p in t["serie"]:
+            assert 0 <= p["probabilidad_colapso"] <= 1 and p["velocidad_predicha_kmh"] >= 1
+            assert p["nivel"] in {"normal", "precaucion", "colapso"}
+            assert not p["anticipado"] or (p["alerta"] and p["colapso_real"] and not p["colapso_actual"])
+
+
+def test_replay_coincide_con_predict(client):
+    """La repetición del día y /predict deben dar la misma predicción con las mismas lecturas."""
+    dia = client.get("/dias?periodo=test").json()[10]["fecha"]
+    t = client.get(f"/replay/{dia}").json()["tramos"][0]
+    serie = t["serie"]
+    obs = [{"timestamp": p["timestamp"], "velocidad_kmh": p["velocidad_actual_kmh"], "lluvia_mm": p["lluvia_mm"]}
+           for p in serie[:6]]
+    r = client.post("/predict", json={"tramo_id": t["tramo_id"], "observaciones": obs}).json()
+    assert abs(r["velocidad_predicha_kmh"] - serie[5]["velocidad_predicha_kmh"]) < 0.05
+    assert abs(r["probabilidad_colapso"] - serie[5]["probabilidad_colapso"]) < 1e-3
+
+
+def test_replay_fecha_sin_datos(client):
+    assert client.get("/replay/2015-01-01").status_code == 404
+    assert client.get("/replay/no-es-fecha").status_code == 422

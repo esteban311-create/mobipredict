@@ -7,6 +7,8 @@ Fuentes oficiales ─► Estandarización ─► EDA ─► Features + split tem
 (data/raw)          (data/interim)     (eda/)   (data/processed)             (RandomizedSearchCV)       (mlruns/)  (models/, docs/) (FastAPI, :8000)
 ```
 
+> **¿Qué problema resuelve y para quién?** Ver **[docs/problema_usuarios_valor.md](docs/problema_usuarios_valor.md)**: el 48 % de los colapsos viales empieza en una vía que circulaba bien una hora antes; MobiPredict anticipa uno de cada tres de ellos.
+>
 > ¿Primera vez? Empieza por **[LEEME_PRIMERO.md](LEEME_PRIMERO.md)**: guía simple con todos los pasos para ejecutarlo en Windows.
 >
 > Informe técnico completo (cómo funciona cada etapa, cómo se construyeron los datos, decisiones y limitaciones): **[README_DETALLADO.md](README_DETALLADO.md)**.
@@ -151,7 +153,9 @@ Salidas: `models/model_comparison.csv` y `docs/model_decision.md`. Este último 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
 | GET | `/health` | Estado y modelos cargados |
-| GET | `/tramos` | Los 22 tramos con su `tramo_id` |
+| GET | `/tramos` | Los 22 tramos con su `tramo_id` y coordenadas (`lat`, `lon`) |
+| GET | `/dias` | Días reales que se pueden repetir (`?periodo=test` o `drift`) con colapsos reales, colapsos sin aviso y lluvia |
+| GET | `/replay/{fecha}` | Repite un día real hora a hora: predicción del modelo frente a lo medido en cada vía, resumen frente a la regla reactiva y totales por hora |
 | POST | `/predict` | Velocidad y tiempo de viaje a 1 h, probabilidad y alerta de colapso |
 | POST | `/predict/batch` | Hasta 500 peticiones |
 | GET | `/escenarios` | Momentos reales del periodo de prueba (y uno de la cuarentena) |

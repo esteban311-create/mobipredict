@@ -1,0 +1,107 @@
+{
+  "generado_utc": "2026-11-07T20:44:01+00:00",
+  "horizonte_min": 60,
+  "features": [
+    "hora_sin",
+    "hora_cos",
+    "dow_sin",
+    "dow_cos",
+    "mes_sin",
+    "mes_cos",
+    "es_fin_semana",
+    "es_pico",
+    "es_festivo",
+    "velocidad_kmh",
+    "ratio_vel",
+    "velocidad_media_3h",
+    "velocidad_delta1",
+    "ratio_vel_delta1",
+    "lluvia_mm",
+    "lluvia_3h",
+    "n_lecturas_previas",
+    "longitud_km",
+    "flujo_continuo",
+    "lat",
+    "lon",
+    "vel_referencia_kmh",
+    "perfil_velocidad",
+    "desvio_perfil",
+    "eod_share_privado_hora",
+    "eod_share_publico_hora",
+    "eod_share_total_hora",
+    "eod_viajes_generados_mz",
+    "eod_viajes_atraidos_mz",
+    "velocidad_kmh_lag1",
+    "velocidad_kmh_lag2",
+    "velocidad_kmh_lag3",
+    "ratio_vel_lag1",
+    "ratio_vel_lag2",
+    "ratio_vel_lag3"
+  ],
+  "umbral_colapso_ratio_vel": 0.5,
+  "min_observaciones": 4,
+  "modelo_velocidad": {
+    "nombre": "lightgbm",
+    "run_id": "2a87c817a3544f3db7fef13cdb49d40d",
+    "registro": "mobipredict-velocidad v1 (alias champion)",
+    "test_mae_kmh": 2.348,
+    "test_rmse_kmh": 3.611,
+    "test_wape": 0.0788,
+    "razones": [
+      "lightgbm queda a menos de 1 % del RMSE de random_forest y es más rápido; se prefiere por latencia.",
+      "lightgbm obtiene el menor RMSE de validación (3.65 km/h) y reduce el WAPE 27.8 % frente al perfil histórico."
+    ]
+  },
+  "modelo_colapso": {
+    "nombre": "random_forest",
+    "run_id": "32f26caa8ba74c50bb257cf803ea4979",
+    "registro": "mobipredict-colapso v1 (alias champion)",
+    "umbral_decision": 0.6607,
+    "test_pr_auc": 0.6447,
+    "test_recall": 0.6153,
+    "test_precision": 0.5912,
+    "razones": [
+      "Ningún modelo alcanza recall >= 0.7 en validación; se elige por PR-AUC entre todos.",
+      "random_forest obtiene PR-AUC de validación 0.707 con recall 0.65 y precisión 0.67 (umbral 0.661)."
+    ]
+  },
+  "tasa_colapso": {
+    "drift": 0.0525,
+    "test": 0.0825,
+    "train": 0.1012,
+    "valid": 0.104
+  },
+  "filas": {
+    "train": 249813,
+    "drift": 79516,
+    "test": 30060,
+    "valid": 24424
+  },
+  "fuentes": {
+    "velocidad_gt": {
+      "titulo": "Velocidad y tiempo de viaje GT (SIMM, Secretaría de Movilidad de Medellín)",
+      "origen": "local:data/raw",
+      "ficha": "https://www.datos.gov.co/d/7t5n-3b3w"
+    },
+    "aforos": {
+      "titulo": "Aforos vehiculares (Secretaría de Movilidad de Medellín)",
+      "origen": "local:data/raw",
+      "ficha": "https://www.datos.gov.co/d/b9s9-jw7c"
+    },
+    "siniestros": {
+      "titulo": "Road-traffic incidents and fatalities in Medellín 2008–2025 (Mendeley Data, CC BY 4.0)",
+      "origen": "local:data/raw",
+      "ficha": "https://doi.org/10.17632/r6g5dfnpgh.1"
+    },
+    "eod2025": {
+      "titulo": "Encuesta Origen-Destino 2025 — API del visor oficial (AMVA)",
+      "origen": "local:data/raw",
+      "ficha": "https://eod2025.metropol.gov.co/"
+    },
+    "clima": {
+      "titulo": "Open-Meteo Historical Weather API (reanálisis ERA5 / ERA5-Land)",
+      "origen": "local:data/raw",
+      "ficha": "https://open-meteo.com/en/docs/historical-weather-api"
+    }
+  }
+}

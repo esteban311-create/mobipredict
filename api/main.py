@@ -3,7 +3,9 @@
 Endpoints:
   GET  /                  redirige al frontend web (/app/)
   GET  /health            estado del servicio y de los modelos cargados
-  GET  /tramos            catálogo de corredores disponibles
+  GET  /tramos            catálogo de corredores disponibles (con coordenadas)
+  GET  /dias              días reales disponibles para repetir (prueba y pandemia) con su resumen
+  GET  /replay/{fecha}    el modelo predice hora a hora un día real y se compara con lo medido
   GET  /escenarios        momentos reales del periodo de prueba (para el frontend)
   GET  /escenarios/{id}   lecturas de todos los tramos en ese momento + lo que pasó en la hora siguiente
   GET  /modelos           modelos ganadores y comparación de todos los candidatos
@@ -20,6 +22,7 @@ import json
 import sys
 import time
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 import joblib
@@ -33,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from mobipredict import config  # noqa: E402
 from mobipredict.features import features_inferencia  # noqa: E402
 
+from . import replay  # noqa: E402
 from .schemas import (HealthResponse, PredictBatchRequest, PredictBatchResponse,  # noqa: E402
                       PredictRequest, PredictResponse)
 
@@ -58,6 +62,9 @@ def cargar_modelos() -> None:
         comparacion=(pd.read_csv(config.COMPARISON_FILE) if config.COMPARISON_FILE.exists() else None),
         cargado_en=time.strftime("%Y-%m-%dT%H:%M:%S"),
     )
+    ESTADO["replay"] = replay.cargar(ESTADO["meta"])
+    ESTADO["cache_replay"] = {}
+    ESTADO["dias"] = replay.catalogo(ESTADO["replay"]) if ESTADO["replay"] is not None else []
 
 
 @asynccontextmanager
@@ -148,7 +155,7 @@ def health() -> HealthResponse:
 def tramos() -> list[dict]:
     _requiere_modelos()
     cols = ["tramo_id", "corredor", "sentido", "inicio", "fin", "longitud_km", "flujo_tipo", "macrozona",
-            "vel_referencia_kmh"]
+            "vel_referencia_kmh", "lat", "lon"]
     t = ESTADO["store"]["tramos"][cols].copy()
     return t.astype(object).where(t.notna(), None).to_dict(orient="records")
 
@@ -183,6 +190,40 @@ def escenario(escenario_id: str) -> dict:
         if e["id"] == escenario_id:
             return e
     raise HTTPException(status_code=404, detail=f"Escenario desconocido: {escenario_id}")
+
+
+def _requiere_replay() -> None:
+    _requiere_modelos()
+    if ESTADO.get("replay") is None:
+        raise HTTPException(status_code=503, detail="Faltan data/processed/test.parquet y drift.parquet. "
+                                                    "Ejecute `python run_pipeline.py` primero.")
+
+
+@app.get("/dias", tags=["frontend"])
+def dias(periodo: str | None = None) -> list[dict]:
+    """Días reales que se pueden repetir hora a hora, con colapsos reales, colapsos sin aviso y lluvia.
+
+    `periodo`: `test` (dic-2019 a mar-2020, antes de la pandemia) o `drift` (pandemia, mar a dic-2020).
+    """
+    _requiere_replay()
+    if periodo is not None and periodo not in replay.PARTICIONES:
+        raise HTTPException(status_code=422, detail=f"periodo debe ser uno de {list(replay.PARTICIONES)}")
+    return [d for d in ESTADO["dias"] if periodo is None or d["periodo"] == periodo]
+
+
+@app.get("/replay/{fecha}", tags=["frontend"])
+def replay_dia(fecha: date) -> dict:
+    """Repite un día real: para cada tramo y cada hora (6 a 19 h) el modelo predice la hora siguiente y se
+    compara con la velocidad medida. Incluye un resumen del día frente a la regla reactiva actual y totales
+    por hora (alertas, colapsos reales, colapsos anticipados)."""
+    _requiere_replay()
+    cache = ESTADO.setdefault("cache_replay", {})   # se vacía en cargar_modelos (tras reentrenar)
+    if fecha not in cache:
+        cache[fecha] = replay.repetir_dia(ESTADO["replay"], fecha, ESTADO)
+    out = cache[fecha]
+    if out is None:
+        raise HTTPException(status_code=404, detail=f"Sin datos para {fecha}. Ver GET /dias")
+    return out
 
 
 @app.get("/modelos", tags=["frontend"])
