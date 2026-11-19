@@ -87,7 +87,8 @@ mobipredict/
 
 | Dato | De dónde viene | Para qué |
 | --- | --- | --- |
-| Velocidad por vía (2017-2020) | Alcaldía de Medellín (MEData) | Es lo que el modelo aprende a predecir |
+| Velocidad por vía (sep-2019 a sep-2026) | Cámaras ARS del SIMM (Observatorio de Movilidad de Medellín) | Es lo que el modelo aprende a predecir |
+| Velocidad por vía (2017-2020, modelo anterior y gráficos) | Alcaldía de Medellín (MEData) | Primer modelo y análisis exploratorio |
 | Encuesta Origen-Destino 2025 | Área Metropolitana (AMVA) | Saber cuánta gente viaja, a qué hora y entre qué zonas |
 | Accidentes de tránsito (2008-2025) | Mendeley Data (registros de la Secretaría de Movilidad) | Gráficos de siniestralidad |
 | Lluvia por hora | Open-Meteo | La lluvia empeora el tráfico |
@@ -215,10 +216,10 @@ O desde otra terminal de PowerShell:
 $cuerpo = @{
   tramo_id = "AVENIDA_80_NS"
   observaciones = @(
-    @{ timestamp = "2020-02-11T14:00:00"; velocidad_kmh = 24; lluvia_mm = 0 },
-    @{ timestamp = "2020-02-11T15:00:00"; velocidad_kmh = 22; lluvia_mm = 0 },
-    @{ timestamp = "2020-02-11T16:00:00"; velocidad_kmh = 19; lluvia_mm = 0.4 },
-    @{ timestamp = "2020-02-11T17:00:00"; velocidad_kmh = 15; lluvia_mm = 1.2 }
+    @{ timestamp = "2025-02-11T14:00:00"; velocidad_kmh = 24; lluvia_mm = 0 },
+    @{ timestamp = "2025-02-11T15:00:00"; velocidad_kmh = 22; lluvia_mm = 0 },
+    @{ timestamp = "2025-02-11T16:00:00"; velocidad_kmh = 19; lluvia_mm = 0.4 },
+    @{ timestamp = "2025-02-11T17:00:00"; velocidad_kmh = 15; lluvia_mm = 1.2 }
   )
 } | ConvertTo-Json -Depth 3
 Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $cuerpo -ContentType "application/json"
@@ -319,4 +320,4 @@ uvicorn api.main:app --port 8000          # aplicación: http://localhost:8000 �
 - `docs\fuentes_de_datos.md`: de dónde salen los datos y cómo se limpiaron.
 - `docs\model_decision.md`: qué modelo ganó y por qué (aparece después de ejecutar).
 
-**Una limitación importante:** los datos públicos de velocidad llegan hasta 2020. El modelo aprende bien cómo se comporta el tráfico, pero para usarlo hoy habría que reentrenarlo con datos recientes de la Alcaldía.
+**Una limitación importante:** el modelo que viene en `models\` se entrenó con las cámaras ARS del SIMM (2019-2026), que se recibieron como una exportación y no se descargan solas. `python run_pipeline.py` vuelve a entrenar con los datos públicos 2017-2020 y reemplaza ese modelo; para repetir el modelo actual hace falta la carpeta `Datos_camaras_ARS` y los scripts `scripts\convertir_ars_a_sensores.py` y `scripts\reentrenar_con_ars.py` (ver README.md).

@@ -3,103 +3,229 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MobiPredict · Riesgo vial a una hora</title>
-  <meta name="description" content="Pronóstico de velocidad y alertas de colapso por corredor vial en Medellín, con datos abiertos.">
+  <title>MobiPredict · Centro de anticipación vial</title>
+  <meta name="description" content="Anticipa con una hora de ventaja qué vías de Medellín van a colapsar. Modelos MLP + LightGBM entrenados con cámaras ARS 2019–2026.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body data-vista="control">
   <header class="barra">
-    <a class="marca" href="#prediccion">
+    <a class="marca" href="#" id="marca" aria-label="MobiPredict, inicio">
       <svg class="marca-icono" viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--asfalto)"/>
-        <path d="M9 25 L14 7 M23 25 L18 7" stroke="var(--linea)" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M16 23v-2.5M16 17v-2.5M16 11V9" stroke="var(--senal)" stroke-width="2.2" stroke-linecap="round"/>
+        <rect x="1" y="1" width="30" height="30" rx="8" fill="#101a24" stroke="#2a3a4a"/>
+        <path d="M9 25 L14 7 M23 25 L18 7" stroke="#5d7286" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M16 23v-2.5M16 17v-2.5M16 11V9" stroke="var(--valor)" stroke-width="2.2" stroke-linecap="round"/>
       </svg>
       <span>MobiPredict</span>
     </a>
-    <nav class="menu" aria-label="Secciones">
-      <a href="#prediccion">Predicción</a>
-      <a href="#modelos">Modelos</a>
-      <a href="#analisis">Análisis de datos</a>
-      <a href="/docs" target="_blank" rel="noopener">API</a>
+    <nav class="vistas" aria-label="Vistas" role="tablist">
+      <button type="button" role="tab" data-vista="control" aria-selected="true">Centro</button>
+      <button type="button" role="tab" data-vista="viaje" aria-selected="false">Mi viaje</button>
+      <button type="button" role="tab" data-vista="navegar" aria-selected="false">Navegar</button>
+      <button type="button" role="tab" data-vista="envivo" aria-selected="false"><i class="punto-vivo" aria-hidden="true"></i>En vivo</button>
+      <button type="button" role="tab" data-vista="ars" aria-selected="false">Actualización</button>
+      <button type="button" role="tab" data-vista="evidencia" aria-selected="false">Evidencia</button>
     </nav>
-    <p id="estado" class="estado" role="status">Conectando con la API…</p>
+    <div class="barra-der">
+      <button type="button" class="boton-historia" id="btn-historia">▶ Historia</button>
+      <p id="estado" class="estado" role="status">Conectando…</p>
+    </div>
   </header>
 
-  <main>
-    <!-- ============ PREDICCIÓN ============ -->
-    <section id="prediccion" class="seccion">
-      <div class="intro">
-        <h1>¿Qué vías de Medellín van a colapsar en la próxima hora?</h1>
-        <p class="bajada">Elige un momento real medido por los sensores de la Secretaría de Movilidad. El modelo predice cada corredor una hora adelante y lo compara con lo que de verdad pasó.</p>
+  <main class="escena">
+    <div id="mapa" class="mapa" aria-label="Mapa de Medellín con el riesgo de colapso de cada vía"></div>
+    <div id="lluvia" class="lluvia" aria-hidden="true"></div>
+
+    <div class="chip-datos" id="chip-datos" hidden>
+      <span class="chip-dot" aria-hidden="true"></span>
+      <span id="chip-texto">Cámaras ARS · 2019–2026</span>
+      <button type="button" class="chip-link" id="btn-chip-ars">Ver salto de datos →</button>
+    </div>
+
+    <!-- Cifras de valor acumuladas del día (se actualizan mientras avanza la repetición) -->
+    <section class="kpis" id="kpis" aria-live="polite" aria-label="Valor acumulado del día"></section>
+
+    <!-- Panel izquierdo: Centro de control o Mi viaje -->
+    <aside class="panel panel-izq" id="panel-control">
+      <header class="panel-cab">
+        <p class="sobre" id="control-hora">—</p>
+        <h2>Dónde actuar primero</h2>
+        <p class="panel-sub">Repetición de un día real ARS. Ordenadas por probabilidad de colapso en la próxima hora.</p>
+        <div class="filtro" role="group" aria-label="Filtrar vías">
+          <button type="button" data-f="todas" aria-pressed="true">Todas</button>
+          <button type="button" data-f="tempranos" aria-pressed="false">Avisos tempranos <b id="filtro-n">0</b></button>
+        </div>
+      </header>
+      <ol class="ranking" id="ranking"></ol>
+      <p class="leyenda">
+        <span><i class="punto colapso"></i>Alerta</span>
+        <span><i class="punto precaucion"></i>Precaución</span>
+        <span><i class="punto normal"></i>Normal</span>
+        <span><i class="etq-temprano">AVISO TEMPRANO</i>hoy fluye, en 1 h colapsa</span>
+      </p>
+    </aside>
+
+    <aside class="panel panel-izq" id="panel-viaje" hidden>
+      <header class="panel-cab">
+        <p class="sobre" id="viaje-hora">—</p>
+        <h2>¿Salgo ahora o espero?</h2>
+        <p class="panel-sub">Elige tu vía y te decimos cuánto vas a tardar en la próxima hora.</p>
+      </header>
+      <div class="modo-aviso" id="viaje-modo">
+        <b>Demo con un día histórico</b>
+        <p>Aquí se <em>repite</em> un día medido por las cámaras ARS. Para hoy usa <strong>En vivo</strong> o <strong>Navegar</strong>.</p>
+        <div class="modo-acciones">
+          <button type="button" class="boton-consultar ir" data-ir="envivo">Ir a En vivo</button>
+          <button type="button" class="boton-consultar ir" data-ir="navegar">Ir a Navegar</button>
+        </div>
       </div>
+      <label class="campo">
+        <span>Mi recorrido</span>
+        <select id="viaje-tramo"></select>
+      </label>
+      <div id="viaje-resultado"></div>
+    </aside>
 
-      <div id="sin-modelos" class="aviso" hidden>
-        <h2>Aún no hay modelos entrenados</h2>
-        <p>Ejecuta <code>python run_pipeline.py</code> (o <code>python run_pipeline.py --fast</code>) en la carpeta del proyecto y luego recarga esta página.</p>
-        <p class="detalle" id="sin-modelos-detalle"></p>
+    <aside class="panel panel-izq" id="panel-envivo" hidden>
+      <header class="panel-cab">
+        <p class="sobre" id="envivo-hora">—</p>
+        <h2>Medellín ahora</h2>
+        <p class="panel-sub">Riesgo de colapso en la próxima hora con tráfico en tiempo real.</p>
+        <div class="fuentes" id="envivo-fuentes" aria-label="Fuentes de datos en vivo"></div>
+        <button type="button" class="boton-consultar" id="btn-envivo">↻ Consultar ahora</button>
+        <button type="button" class="boton-consultar ir" id="btn-ir-navegar">Buscar una ruta en el mapa →</button>
+      </header>
+      <div class="envivo-aviso" id="envivo-aviso" role="status"></div>
+      <ol class="ranking" id="envivo-ranking"></ol>
+      <p class="leyenda envivo-nota" id="envivo-nota"></p>
+    </aside>
+
+    <!-- Navegar: búsqueda tipo mapa + comparación de rutas -->
+    <aside class="nav-buscar" id="panel-navegar" hidden>
+      <p class="sobre" id="nav-hora">Tráfico de ahora · riesgo de la próxima hora</p>
+      <h2>¿A dónde vas?</h2>
+      <p class="panel-sub">Google pone el tráfico de este momento. El color de la vía es el colapso que MobiPredict ve dentro de una hora.</p>
+      <form class="ruta-form" id="ruta-form" autocomplete="off">
+        <div class="ruta-campo">
+          <label for="ruta-origen">Desde</label>
+          <input id="ruta-origen" type="text" placeholder="Dirección, lugar o tu ubicación" required maxlength="200">
+          <button type="button" class="ruta-gps" id="ruta-gps" title="Usar mi ubicación actual" aria-label="Usar mi ubicación actual">◎</button>
+        </div>
+        <button type="button" class="ruta-swap" id="ruta-swap" aria-label="Intercambiar origen y destino">↕</button>
+        <div class="ruta-campo">
+          <label for="ruta-destino">Hasta</label>
+          <input id="ruta-destino" type="text" placeholder="Dirección o lugar (ej. Parque Lleras)" required maxlength="200">
+        </div>
+        <div class="ruta-acciones">
+          <button type="submit" class="boton-ruta" id="btn-ruta">Ver rutas</button>
+          <button type="button" class="ruta-limpiar" id="ruta-limpiar" hidden>Quitar</button>
+        </div>
+      </form>
+    </aside>
+    <section class="nav-dock" id="nav-dock" hidden aria-live="polite">
+      <div class="nav-decision" id="nav-decision">
+        <p id="nav-vacio">Escribe de dónde sales y a dónde vas. Comparamos la ruta más rápida de ahora con la que evita un colapso que todavía no se ve.</p>
       </div>
+      <div class="nav-cartas" id="ruta-resultado"></div>
+    </section>
 
-      <div id="tablero" class="tablero" hidden>
-        <div class="momentos" role="tablist" aria-label="Momento a simular" id="momentos"></div>
+    <!-- Panel derecho: detalle de una vía -->
+    <aside class="panel panel-der" id="detalle" hidden aria-live="polite"></aside>
 
-        <div class="resumen" id="resumen" aria-live="polite"></div>
+    <!-- Máquina del tiempo -->
+    <section class="tiempo" id="tiempo" aria-label="Repetición de un día real">
+      <button type="button" class="dia-btn" id="btn-dia" aria-haspopup="dialog">
+        <small>Día histórico ARS</small><b id="dia-texto">Cargando…</b>
+      </button>
+      <button type="button" class="play" id="btn-play" aria-label="Reproducir el día">▶</button>
+      <div class="linea-tiempo">
+        <div class="histo" id="histo" aria-hidden="true"></div>
+        <input type="range" id="hora" min="6" max="19" step="1" value="6" aria-label="Hora del día">
+        <div class="horas" id="horas" aria-hidden="true"></div>
+      </div>
+      <label class="revelar" title="Muestra lo que de verdad pasó una hora después">
+        <input type="checkbox" id="revelar" checked>
+        <span>Revelar lo que pasó</span>
+      </label>
+    </section>
 
-        <div class="cuerpo">
-          <div class="vias">
-            <div class="vias-cabecera" aria-hidden="true">
-              <span>Corredor</span>
-              <span>Velocidad ahora y en 1 hora</span>
-              <span>Riesgo</span>
-            </div>
-            <ol class="lista-vias" id="lista-vias"></ol>
-            <p class="leyenda">
-              <span class="ley ley-ahora"></span> ahora
-              <span class="ley ley-pred"></span> predicción a 1 h
-              <span class="ley ley-real"></span> lo que pasó
-              <span class="ley ley-umbral"></span> umbral de colapso (50 % de la velocidad normal)
-            </p>
-          </div>
+    <!-- Actualización ARS (antes / después del reentrenamiento) -->
+    <section class="evidencia ars-vista" id="vista-ars" hidden>
+      <div class="ev-contenido">
+        <header class="ev-cab">
+          <p class="sobre">Reentrenamiento 2026</p>
+          <h2>El salto a cámaras ARS</h2>
+          <p class="ev-bajada" id="ars-bajada">De la serie GT (hasta 2020) a sensores ARS/CCTV con cobertura hasta 2026. Misma pregunta —¿qué vía colapsa en 1 h?— con más historia y un holdout reciente.</p>
+        </header>
 
-          <aside class="detalle-via" id="detalle" aria-live="polite">
-            <p class="vacio">Selecciona un corredor para ver su detalle y probar otros valores.</p>
-          </aside>
+        <div class="linea-cortes" id="ars-linea" aria-label="Línea temporal de particiones"></div>
+
+        <div class="ars-versus" id="ars-versus"></div>
+
+        <h3 class="ev-titulo">Qué cambió en la práctica</h3>
+        <ul class="ars-puntos" id="ars-puntos"></ul>
+
+        <div class="ars-cta">
+          <button type="button" class="hist-sig" id="btn-ars-control">Probar un día real →</button>
+          <button type="button" class="hist-saltar" id="btn-ars-evidencia">Ver métricas completas</button>
         </div>
       </div>
     </section>
 
-    <!-- ============ MODELOS ============ -->
-    <section id="modelos" class="seccion">
-      <h2>Cómo se eligió el modelo</h2>
-      <p class="bajada">Se entrenaron varios candidatos para cada tarea y se eligió el ganador con reglas fijadas antes de ver los resultados. La prueba usa datos que el modelo nunca vio; la pandemia mide qué tanto se degrada cuando el mundo cambia.</p>
-      <div id="ganadores" class="ganadores"></div>
-      <div class="tablas-modelos">
-        <div>
-          <h3>Velocidad a 1 hora</h3>
-          <div class="tabla-scroll"><table id="tabla-velocidad" class="tabla"></table></div>
+    <!-- Evidencia (vista a página completa sobre el mapa) -->
+    <section class="evidencia" id="evidencia" hidden>
+      <div class="ev-contenido">
+        <header class="ev-cab">
+          <p class="sobre" id="ev-sobre">Periodo de prueba · datos que el modelo nunca vio</p>
+          <h2>La prueba de que funciona</h2>
+          <p class="ev-bajada" id="ev-contexto">Campeones actuales: red neuronal (MLP) para velocidad y LightGBM para alerta de colapso, entrenados con la serie ARS.</p>
+        </header>
+        <div class="ev-valor" id="ev-valor"></div>
+
+        <h3 class="ev-titulo">Cómo se eligió el modelo</h3>
+        <p class="ev-bajada">Se entrenaron varios candidatos para cada tarea y se eligió el ganador con reglas fijadas antes de ver los resultados. El holdout 2026 mide cuánto se sostiene el modelo en un periodo que no se usó para elegirlo.</p>
+        <div id="ganadores" class="ganadores"></div>
+        <div class="tablas-modelos">
+          <div><h4>Velocidad a 1 hora</h4><div class="tabla-scroll"><table id="tabla-velocidad" class="tabla"></table></div></div>
+          <div><h4>Colapso a 1 hora</h4><div class="tabla-scroll"><table id="tabla-colapso" class="tabla"></table></div></div>
         </div>
-        <div>
-          <h3>Colapso a 1 hora</h3>
-          <div class="tabla-scroll"><table id="tabla-colapso" class="tabla"></table></div>
-        </div>
+
+        <h3 class="ev-titulo">Lo que muestran los datos</h3>
+        <p class="ev-bajada">Gráficos del análisis exploratorio con las fuentes oficiales (incluye EOD 2025 y clima).</p>
+        <div id="galeria" class="galeria"></div>
+
+        <p class="ev-pie">Datos: Observatorio de Movilidad (ARS/CCTV SIMM), MEData (aforos), Encuesta Origen-Destino 2025 del AMVA, Open-Meteo (ERA5) y Mendeley Data (siniestralidad 2008-2025). Proyecto académico; no es un servicio oficial de la Alcaldía. API: <a href="/docs" target="_blank" rel="noopener">/docs</a>.</p>
       </div>
-      <p class="nota">Detalle completo en <code>docs/model_decision.md</code> y en MLflow (<code>mlflow ui</code>, puerto 5000).</p>
     </section>
 
-    <!-- ============ EDA ============ -->
-    <section id="analisis" class="seccion">
-      <h2>Lo que muestran los datos</h2>
-      <p class="bajada">Los nueve gráficos del análisis exploratorio, generados con las fuentes oficiales.</p>
-      <div id="galeria" class="galeria"></div>
-    </section>
+    <div id="sin-modelos" class="aviso" hidden>
+      <h2>Aún no hay modelos entrenados</h2>
+      <p>Ejecuta <code>python run_pipeline.py</code> en la carpeta del proyecto y recarga esta página.</p>
+      <p class="detalle" id="sin-modelos-detalle"></p>
+    </div>
   </main>
 
-  <footer class="pie">
-    <p>Datos: MEData (Velocidad y tiempo de viaje GT, Aforos), Encuesta Origen-Destino 2025 del AMVA, Open-Meteo (ERA5) y Mendeley Data (siniestralidad 2008-2025). Proyecto académico; no es un servicio oficial de la Alcaldía.</p>
-  </footer>
+  <!-- Selector de días: calendario de los días reales disponibles -->
+  <dialog id="dlg-dias" class="dlg-dias" aria-labelledby="dlg-dias-titulo">
+    <form method="dialog"><button class="cerrar" aria-label="Cerrar">×</button></form>
+    <h2 id="dlg-dias-titulo">Elige un día real para repetir</h2>
+    <p class="dlg-sub">Cada cuadro es un día medido por cámaras ARS. Periodo de prueba = 2025; holdout = 2026. Más intenso = más colapsos que empezaron <b>sin aviso</b>.</p>
+    <div class="atajos" id="atajos"></div>
+    <div class="calendario" id="calendario"></div>
+  </dialog>
+
+  <!-- Historia: modo presentación -->
+  <div class="historia" id="historia" hidden role="dialog" aria-modal="true" aria-label="La historia de MobiPredict">
+    <div class="hist-paso" id="hist-paso"></div>
+    <div class="hist-nav">
+      <div class="hist-puntos" id="hist-puntos"></div>
+      <button type="button" class="hist-saltar" id="hist-saltar">Saltar</button>
+      <button type="button" class="hist-sig" id="hist-sig">Siguiente →</button>
+    </div>
+  </div>
 
   <dialog id="visor" class="visor">
     <form method="dialog"><button class="cerrar" aria-label="Cerrar">×</button></form>
@@ -107,6 +233,7 @@
     <p id="visor-texto"></p>
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="app.js?v=ars2026"></script>
 </body>
 </html>

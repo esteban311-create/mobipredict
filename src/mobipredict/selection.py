@@ -13,7 +13,8 @@ Colapso a 1 hora
   2. Gana la mayor PR-AUC de validación (robusta al desbalance).
   3. Desempate: diferencia de PR-AUC < 0,005 -> menor Brier y luego menor latencia.
 
-El periodo de pandemia (drift) se reporta para todos los modelos, pero NO se usa para elegir.
+El periodo de drift (holdout más reciente; con la serie GT era la pandemia) se reporta para todos los modelos,
+pero NO se usa para elegir.
 """
 from __future__ import annotations
 
@@ -212,9 +213,9 @@ def _escribir_decision(vel, col, g_vel, g_col, r_vel, r_col, meta, spec) -> None
         "",
         f"- Sensores: {spec['fuente_sensores']}, {spec['tramos']} tramos, lecturas horarias 6:00-20:00.",
         f"- Split temporal: entrenamiento hasta {spec['corte_validacion']}, validación hasta {spec['corte_test']}, "
-        f"prueba hasta {spec['fin_test']} (antes de las restricciones por COVID-19). La hora frontera de cada "
-        "partición se descarta para que el objetivo no cruce de una a otra.",
-        f"- Drift: {spec['ventana_drift'][0]} a {spec['ventana_drift'][1]} (pandemia), solo para diagnóstico.",
+        f"prueba hasta {spec['fin_test']}. La hora frontera de cada partición se descarta para que el objetivo "
+        "no cruce de una a otra.",
+        f"- Drift / holdout reciente: {spec['ventana_drift'][0]} a {spec['ventana_drift'][1]}, solo para diagnóstico.",
         f"- Colapso = velocidad < {spec['umbral_colapso_ratio_vel']:.0%} de la velocidad de referencia del tramo "
         f"(percentil {spec['percentil_vel_referencia'] * 100:.0f} del entrenamiento). Tasa de colapso: "
         + ", ".join(f"{k} {v:.1%}" for k, v in tasa.items()) + ".",
@@ -252,9 +253,9 @@ def _escribir_decision(vel, col, g_vel, g_col, r_vel, r_col, meta, spec) -> None
         *_nota_test(c, g_col, "test_pr_auc", False, "PR-AUC"),
         "- Se prioriza recall: una alerta perdida cuesta más que una falsa alarma que un operador descarta.",
         "",
-        "## Prueba de estrés: pandemia (drift)",
+        "## Prueba de estrés: holdout reciente (drift)",
         "",
-        *_tabla_md(v, {"test_mae": "MAE test (pre-pandemia)", "drift_mae": "MAE drift (pandemia)",
+        *_tabla_md(v, {"test_mae": "MAE test", "drift_mae": "MAE drift",
                        "drift_wape": "WAPE drift"}, g_vel, {"test_mae": ".2f", "drift_mae": ".2f"}),
         "",
         *_tabla_md(c, {"test_pr_auc": "PR-AUC test", "drift_pr_auc": "PR-AUC drift",
@@ -264,16 +265,44 @@ def _escribir_decision(vel, col, g_vel, g_col, r_vel, r_col, meta, spec) -> None
         "",
         "— = no aplica: sin colapsos reales en el periodo no se pueden medir recall ni PR-AUC.",
         "",
-        "Con las vías casi vacías la congestión casi desaparece: la tasa de colapso del periodo de drift es "
-        f"{tasa.get('drift', float('nan')):.1%} frente a {tasa.get('test', float('nan')):.1%} en prueba. Es un cambio de "
-        "régimen que el monitoreo debe detectar (drift de entrada en velocidades y de salida en la tasa de alertas) "
-        "y que justifica el reentrenamiento por disparador, no solo por calendario.",
+        *_texto_drift(tasa),
         "",
         "## Riesgos y siguientes pasos",
         "",
-        "- Los sensores abiertos más recientes publicados por la Alcaldía llegan a dic-2020; antes de operar en 2026 "
-        "hay que reentrenar con el feed actual del SIMM.",
-        "- Revisar el umbral de colapso y el de alerta con la Secretaría de Movilidad.",
-        "- Evaluar un modelo de grafos espacio-temporal como challenger con más tramos.",
+        *_riesgos(spec),
     ]
     config.DECISION_FILE.write_text("\n".join(L), encoding="utf-8")
+
+
+def _texto_drift(tasa: dict) -> list[str]:
+    """Interpreta el periodo de drift según suba o baje la tasa de colapso frente a prueba."""
+    td, tt = tasa.get("drift"), tasa.get("test")
+    if td is None or tt is None:
+        return []
+    if td < tt:
+        return [f"La tasa de colapso del periodo de drift es {td:.1%} frente a {tt:.1%} en prueba: las vías se "
+                "descongestionan (con la serie GT, por la pandemia). Es un cambio de régimen que el monitoreo debe "
+                "detectar (drift de entrada en velocidades y de salida en la tasa de alertas) y que justifica el "
+                "reentrenamiento por disparador, no solo por calendario."]
+    return [f"La tasa de colapso del periodo de drift es {td:.1%} frente a {tt:.1%} en prueba: la congestión "
+            "sigue creciendo año a año. Que las métricas se sostengan en este periodo, que el modelo nunca vio, "
+            "indica que generaliza a datos más recientes; aun así el monitoreo debe vigilar la tasa de alertas "
+            "y disparar el reentrenamiento cuando cambie el régimen, no solo por calendario."]
+
+
+def _riesgos(spec: dict) -> list[str]:
+    fuente = str(spec.get("fuente_sensores", ""))
+    if "ARS" in fuente:
+        primero = [
+            "- La serie ARS sale de una exportación de las bases diarias de cámaras ARS/CCTV del Observatorio de "
+            "Movilidad, no de una descarga pública automática: para operar hay que conectar el feed del SIMM.",
+            "- Las cámaras ARS miden velocidad en un punto, no tiempo de viaje del corredor; el tiempo de viaje se "
+            "estima con la longitud del tramo. Las métricas no son comparables 1 a 1 con las del modelo GT "
+            "(2017-2020).",
+        ]
+    else:
+        primero = ["- Los sensores abiertos más recientes publicados por la Alcaldía llegan a dic-2020; antes de "
+                   "operar hay que reentrenar con el feed actual del SIMM."]
+    return [*primero,
+            "- Revisar el umbral de colapso y el de alerta con la Secretaría de Movilidad.",
+            "- Evaluar un modelo de grafos espacio-temporal como challenger con más tramos."]

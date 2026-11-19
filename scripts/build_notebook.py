@@ -35,7 +35,8 @@ Fuentes oficiales ─► Estandarización ─► EDA ─► Features ─► Entr
 
 | Fuente | Uso | Enlace |
 | --- | --- | --- |
-| Velocidad y tiempo de viaje GT (SIMM, MEData) | Serie del modelo, 22 tramos, 2017-2020 | https://www.datos.gov.co/d/7t5n-3b3w |
+| Cámaras ARS/CCTV del SIMM (Observatorio de Movilidad) | **Serie del modelo vigente**, 22 tramos, sep-2019 a sep-2026 | Exportación de bases diarias (no es dato abierto) |
+| Velocidad y tiempo de viaje GT (SIMM, MEData) | Serie del modelo anterior y del EDA, 22 tramos, 2017-2020 | https://www.datos.gov.co/d/7t5n-3b3w |
 | EOD 2025 (AMVA), API del visor oficial | Demanda horaria, reparto modal, matriz OD 67 macrozonas | https://eod2025.metropol.gov.co/ |
 | Siniestralidad Medellín 2008-2025 (Mendeley, CC BY 4.0) | EDA de siniestralidad | https://doi.org/10.17632/r6g5dfnpgh.1 |
 | Open-Meteo (ERA5) | Lluvia horaria | https://open-meteo.com/en/docs/historical-weather-api |
@@ -44,8 +45,12 @@ Fuentes oficiales ─► Estandarización ─► EDA ─► Features ─► Entr
 El notebook contiene **todo el proyecto**:
 
 1. **Parte A — Código y tablas de referencia.** Cada archivo se escribe con `%%writefile`.
-2. **Parte B — Datos y pipeline.** Descarga de las fuentes oficiales (~175 MB la primera vez), flujo de Prefect y revisión de cada etapa.
+2. **Parte B — Datos y pipeline.** Descarga de las fuentes oficiales (~175 MB la primera vez), flujo de Prefect con la serie GT (EDA y modelo anterior), reentrenamiento con las cámaras ARS (modelo vigente) y revisión de cada etapa.
 3. **Parte C — Servicio.** API FastAPI, pruebas y despliegue.
+
+**Modelo vigente:** red neuronal MLP (velocidad) y LightGBM (colapso), entrenados con las cámaras ARS: train sep-2019 a 2023, validación 2024, prueba 2025 y holdout ene-sep 2026. Las figuras del EDA son de la serie GT 2017-2020.
+
+**Protección de los modelos:** si `models/metadata.json` ya existe (por ejemplo, abierto dentro del repositorio), el notebook **no reentrena**: solo revisa los artefactos guardados. Para reentrenar, ponga `REENTRENAR = True` en la sección 0. El reentrenamiento ARS necesita la carpeta de exportación `Datos_camaras_ARS` (variable `MOBIPREDICT_ARS_DIR`) o el parquet `data/interim/sensores_ars_horaria.parquet`; sin ellos, el modelo queda en la versión GT.
 
 Requiere internet en la primera ejecución. *Kernel → Restart & Run All*."""),
     md("## 0. Entorno"),
@@ -64,7 +69,11 @@ os.chdir(PROJECT_DIR)
 for d in ["src/mobipredict", "api", "tests/fixtures", "notebooks", "scripts", "data/raw", "data/interim",
           "data/processed", "data/reference/eod2025", "eda/figures", "eda/reports", "models", "docs", "mlruns"]:
     Path(d).mkdir(parents=True, exist_ok=True)
-print("Proyecto en:", Path.cwd())"""),
+print("Proyecto en:", Path.cwd())
+
+# Reentrenar solo si no hay modelos guardados (protege los modelos ARS del repositorio).
+REENTRENAR = not Path("models/metadata.json").exists()
+print("REENTRENAR =", REENTRENAR)"""),
     code("""paquetes = {"prefect": "prefect>=3.0", "mlflow": "mlflow>=2.16", "optuna": "optuna>=3.6", "lightgbm": "lightgbm>=4.3",
             "fastapi": "fastapi>=0.110", "httpx": "httpx>=0.27", "pyarrow": "pyarrow>=15", "sklearn": "scikit-learn>=1.5",
             "pytest": "pytest>=8", "holidays": "holidays>=0.50", "openpyxl": "openpyxl>=3.1"}
@@ -100,17 +109,35 @@ else:
     *archivo("src/mobipredict/selection.py",
              "### 5. `selection.py` — selección razonada, tabla comparativa, decisión y Model Registry"),
     *archivo("src/mobipredict/pipeline.py", "### 6. `pipeline.py` — `@flow` y `@task` de Prefect"),
+    *archivo("src/mobipredict/envivo.py",
+             "### 7. `envivo.py` — tráfico en tiempo real (TomTom, HERE, Google) calibrado a la escala del SIMM"),
+    *archivo("src/mobipredict/rutas.py", "### 8. `rutas.py` — rutas sugeridas según el riesgo de colapso"),
+    *archivo("data/reference/puntos_envivo.csv", "`puntos_envivo.csv`: punto de consulta en vivo de cada tramo."),
+    *archivo(".env.example", "`.env.example`: plantilla de claves de tráfico en vivo (copiar como `.env`; nunca se sube a Git)."),
     *archivo("run_pipeline.py", "### `run_pipeline.py` — un solo comando"),
     *archivo("scripts/descargar_datos.py", "### `scripts/descargar_datos.py` — descarga de fuentes sin entrenar"),
     *archivo("scripts/descargar_datos.ps1", "### `scripts/descargar_datos.ps1` — descarga en Windows (PowerShell)"),
-    *archivo("api/__init__.py", "### 7. API FastAPI"),
+    *archivo("scripts/convertir_ars_a_sensores.py",
+             "### `scripts/convertir_ars_a_sensores.py` — de los archivos diarios de cámaras ARS a la serie horaria por tramo"),
+    *archivo("scripts/reentrenar_con_ars.py",
+             "### `scripts/reentrenar_con_ars.py` — reentrena con la serie ARS (cortes 2019-09 / 2024 / 2025 / 2026)"),
+    *archivo("scripts/recolector_envivo.py", "### `scripts/recolector_envivo.py` — recolector de lecturas en vivo"),
+    *archivo("api/__init__.py", "### 9. API FastAPI"),
+    *archivo("api/replay.py", "#### `api/replay.py` — repetición de días reales y cifras de valor"),
     *archivo("api/schemas.py", "#### `api/schemas.py`"),
     *archivo("api/main.py", "#### `api/main.py`"),
-    *archivo("tests/conftest.py", "### 8. Pruebas"),
+    *archivo("tests/conftest.py", "### 10. Pruebas"),
     *archivo("tests/fixtures/velocidad_gt_extracto.csv", "#### Extracto real de MEData (Av. 80 y Autopista Sur, 10-11 feb 2020)"),
     *archivo("tests/test_features.py", "#### `tests/test_features.py`"),
     *archivo("tests/test_api.py", "#### `tests/test_api.py`"),
-    *archivo("Dockerfile", "### 9. Contenedores\n#### `Dockerfile`"),
+    *archivo("tests/test_fuentes.py", "#### `tests/test_fuentes.py`"),
+    *archivo("tests/test_envivo.py", "#### `tests/test_envivo.py` (respuestas simuladas de los proveedores, sin llamar a las APIs)"),
+    *archivo("tests/test_rutas.py", "#### `tests/test_rutas.py`"),
+    *archivo("frontend/index.html", "### 11. Frontend web (servido por la API en `/`)\n#### `frontend/index.html`\n"
+             "Leaflet va en `frontend/vendor/` y no se copia aquí: sin él, el mapa no se dibuja, pero el resto funciona."),
+    *archivo("frontend/app.js", "#### `frontend/app.js`"),
+    *archivo("frontend/styles.css", "#### `frontend/styles.css`"),
+    *archivo("Dockerfile", "### 12. Contenedores\n#### `Dockerfile`"),
     *archivo("docker-compose.yml", "#### `docker-compose.yml`"),
     *archivo(".dockerignore", "#### `.dockerignore`"),
     *archivo("requirements-dev.txt", "#### `requirements-dev.txt`"),
@@ -130,29 +157,50 @@ warnings.filterwarnings("ignore")
 from mobipredict import config
 from mobipredict.data_acquisition import adquirir_datos
 
-manifest = adquirir_datos()
-pd.DataFrame(manifest["fuentes"]).T[["titulo", "origen", "bytes", "ficha"]]"""),
-    md("## B.2 Pipeline orquestado con Prefect\nEquivale a `python run_pipeline.py`."),
-    code("""from mobipredict.pipeline import mobipredict_pipeline
-resultado = mobipredict_pipeline(ejecutar_eda=True)"""),
-    md("## B.3 Tablas estandarizadas"),
+if REENTRENAR:
+    manifest = adquirir_datos()
+    display(pd.DataFrame(manifest["fuentes"]).T[["titulo", "origen", "bytes", "ficha"]])
+else:
+    print("REENTRENAR = False: se usan los datos y modelos ya guardados.")"""),
+    md("## B.2 Pipeline orquestado con Prefect (serie GT)\nEquivale a `python run_pipeline.py`: estandariza las fuentes, genera el EDA y "
+       "entrena el modelo anterior con la serie abierta GT 2017-2020."),
+    code("""if REENTRENAR:
+    from mobipredict.pipeline import mobipredict_pipeline
+    resultado = mobipredict_pipeline(ejecutar_eda=True)"""),
+    md("## B.3 Modelo vigente: reentrenamiento con las cámaras ARS\nConvierte la exportación diaria de cámaras a la serie horaria "
+       "(si hace falta) y corre `scripts/reentrenar_con_ars.py`, que fija los cortes ARS, instala la serie, entrena, "
+       "selecciona y respalda la metadata GT en `models/metadata_antes_ars.json`."),
+    code("""import subprocess
+ars_parquet = config.DATA_INTERIM / "sensores_ars_horaria.parquet"
+ars_dir = os.environ.get("MOBIPREDICT_ARS_DIR")
+if not REENTRENAR:
+    print("REENTRENAR = False: se conservan los modelos guardados.")
+elif not ars_parquet.exists() and not (ars_dir and Path(ars_dir).exists()):
+    print("No hay datos ARS (defina MOBIPREDICT_ARS_DIR con la carpeta Datos_camaras_ARS): el modelo queda en la versión GT.")
+else:
+    if not ars_parquet.exists():
+        subprocess.run([sys.executable, "scripts/convertir_ars_a_sensores.py", "--entrada", ars_dir], check=True)
+    subprocess.run([sys.executable, "scripts/reentrenar_con_ars.py"] + (["--fast"] if config.FAST else []), check=True)"""),
+    md("## B.4 Tablas estandarizadas\nCon el modelo vigente, la serie de sensores es la de las cámaras ARS."),
     code("""sens = pd.read_parquet(config.SENSORES_STD)
 print(f"{len(sens):,} lecturas horarias, {sens.tramo_id.nunique()} tramos, {sens.timestamp.min()} a {sens.timestamp.max()}")
 pd.read_csv(config.TRAMOS_STD)[["tramo_id", "corredor", "sentido", "inicio", "fin", "longitud_km", "flujo_tipo", "macrozona"]]"""),
     code("""pd.read_csv(config.EOD_HORA_STD)[["hora", "viajes_publico", "viajes_privado", "viajes_no_motorizado", "viajes_informal", "viajes_total"]].round(0).head(24)"""),
-    md("## B.4 EDA"),
+    md("## B.5 EDA (serie GT 2017-2020)"),
     code("""from IPython.display import Image, Markdown, display
 display(Markdown((config.EDA_REPORTS / "eda_report.md").read_text(encoding="utf-8")))"""),
     code("""for ruta in sorted(config.EDA_FIGURES.glob("*.png")):
     display(Markdown(f"**{ruta.name}**"))
     display(Image(filename=str(ruta), width=900))"""),
-    md("## B.5 Features y split temporal"),
+    md("## B.6 Features y split temporal"),
     code("""spec = json.loads((config.DATA_PROCESSED / "feature_spec.json").read_text(encoding="utf-8"))
 print("Features:", len(spec["features"]))
 print("Filas por partición:", spec["filas"])
 print("Tasa de colapso:", spec["tasa_colapso"])
+print("Sensores:", spec.get("fuente_sensores", "serie GT"))
+print("Drift / holdout:", spec["ventana_drift"])
 pd.read_parquet(config.DATA_PROCESSED / "train.parquet").head()"""),
-    md("## B.6 Corridas en MLflow"),
+    md("## B.7 Corridas en MLflow"),
     code("""import mlflow
 mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
 runs = mlflow.search_runs(experiment_names=[config.MLFLOW_EXPERIMENT], order_by=["start_time DESC"])
@@ -161,7 +209,7 @@ cols = ["tags.tarea", "tags.modelo", "metrics.valid_rmse", "metrics.valid_wape",
 runs[runs["tags.tarea"].notna()][[c for c in cols if c in runs.columns]].head(12)"""),
     code("""for m in mlflow.MlflowClient().search_registered_models():
     print(m.name, dict(m.aliases or {}))"""),
-    md("## B.7 Comparación y decisión"),
+    md("## B.8 Comparación y decisión"),
     code("""comp = pd.read_csv(config.COMPARISON_FILE)
 display(comp[comp.tarea == "velocidad"][["modelo", "seleccionado", "valid_rmse", "valid_wape", "test_mae", "test_rmse", "drift_mae", "latencia_ms_1000"]])
 display(comp[comp.tarea == "colapso"][["modelo", "seleccionado", "valid_pr_auc", "valid_recall_colapso", "test_pr_auc", "test_recall_colapso", "test_precision_colapso", "umbral"]])"""),
@@ -186,13 +234,16 @@ from api.main import app
 from api.schemas import EJEMPLO_OBS, EJEMPLO_TRAMO
 with TestClient(app) as cliente:
     print(cliente.get("/health").json())
+    display(pd.Series({k: v for k, v in cliente.get("/valor").json().items() if not isinstance(v, dict)}).to_frame("valor en prueba"))
     r = cliente.post("/predict", json={"tramo_id": EJEMPLO_TRAMO, "observaciones": EJEMPLO_OBS})
     display(pd.Series(r.json()).to_frame("respuesta"))"""),
-    code("""!{sys.executable} -m pytest -q tests"""),
+    code("""!"{sys.executable}" -m pytest -q tests"""),
     md("""## Despliegue
 
 ```bash
-python scripts/descargar_datos.py && python run_pipeline.py
+python scripts/descargar_datos.py && python run_pipeline.py      # serie GT + EDA
+python scripts/convertir_ars_a_sensores.py --entrada <carpeta>   # serie ARS
+python scripts/reentrenar_con_ars.py                             # modelo vigente
 uvicorn api.main:app --port 8000
 docker compose up --build                  # trainer -> API (:8000) + MLflow UI (:5000)
 ```

@@ -11,3 +11,11 @@ data/processed/
 mlruns/
 models/*.joblib
 models/candidatos/
+
+# Claves de APIs y lecturas en tiempo real (nunca a Git)
+.env
+data/envivo/
+
+# Dependencias y archivos intermedios de las presentaciones
+docs/node_modules/
+docs/_pptx_media/

@@ -173,7 +173,7 @@ def preparar_dataset() -> dict:
     d = d.dropna(subset=[TARGET_REG, TARGET_CLF])
     d[TARGET_CLF] = d[TARGET_CLF].astype(int)
 
-    # Train < corte_valid <= valid < corte_test <= test < 2020-03-20 <= drift (pandemia)
+    # Train < corte_valid <= valid < corte_test <= test < fin_test <= drift (GT: pandemia; ARS: holdout 2026)
     d["particion"] = np.select(
         [d["timestamp"] < c_valid, d["timestamp"] < c_test, d["timestamp"] < fin_test, d["timestamp"] < fin_drift],
         ["train", "valid", "test", "drift"], "fuera")
@@ -199,7 +199,7 @@ def preparar_dataset() -> dict:
         "horizonte_min": config.FREQ_MIN * config.HORIZON_STEPS, "lags_h": config.LAGS,
         "umbral_colapso_ratio_vel": config.COLLAPSE_SPEED_RATIO, "percentil_vel_referencia": config.PCT_VEL_LIBRE,
         "corte_validacion": str(c_valid.date()), "corte_test": str(c_test.date()), "fin_test": str(fin_test.date()),
-        "ventana_drift": [str(fin_test.date()), "2020-12-31"],
+        "ventana_drift": [str(fin_test.date()), str((fin_drift - pd.Timedelta(days=1)).date())],
         "filas": d["particion"].value_counts().to_dict(),
         "tasa_colapso": d.groupby("particion")[TARGET_CLF].mean().round(4).to_dict(),
         "tramos": int(d["tramo_id"].nunique()),
@@ -236,7 +236,7 @@ def _secuencias(sens: pd.DataFrame, t: pd.Timestamp, vref: pd.Series, lluvia: pd
 
 
 def exportar_escenarios(sens: pd.DataFrame, clima: pd.DataFrame, store: dict) -> list[dict]:
-    """Momentos reales del periodo de PRUEBA (y uno de la pandemia) para el frontend.
+    """Momentos reales del periodo de PRUEBA (y uno del periodo de drift) para el frontend.
 
     Cada escenario trae, para cada tramo con datos, las últimas lecturas horarias hasta la hora t y la
     velocidad que realmente se midió en t + 1 h, para comparar la predicción con lo que pasó.
@@ -282,8 +282,11 @@ def exportar_escenarios(sens: pd.DataFrame, clima: pd.DataFrame, store: dict) ->
         peor = peor[peor.index.hour >= 10]
         if len(peor):
             elegidos.append(("colapsos", "Hora previa a más colapsos", peor.idxmax() - config.HORIZON_STEPS * PASO))
-    # Un momento de la cuarentena estricta (abril-mayo de 2020), fuera de lo que vio el modelo
-    elegidos.append(("pandemia", "Cuarentena 2020: pico de la tarde",
+    # Un momento del periodo de drift, fuera de lo que vio el modelo. Con la serie GT es la cuarentena estricta
+    # (abril-mayo de 2020); con ARS es el holdout más reciente.
+    clave, nombre = (("pandemia", "Cuarentena 2020: pico de la tarde") if fin_test == pd.Timestamp("2020-03-20")
+                     else ("holdout", f"Holdout {fin_test.year}: pico de la tarde"))
+    elegidos.append((clave, nombre,
                      elegir(candidatos(fin_test + pd.Timedelta(days=14), min(fin_test + pd.Timedelta(days=70), fin_drift)),
                             [17])))
 

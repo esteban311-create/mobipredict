@@ -14,6 +14,22 @@ from pathlib import Path
 # --------------------------------------------------------------------------- #
 ROOT = Path(os.getenv("MOBIPREDICT_HOME", Path(__file__).resolve().parents[2]))
 
+
+def _cargar_env(ruta: Path) -> None:
+    """Variables del archivo .env (claves de APIs, horarios, cupos). Las del entorno tienen prioridad."""
+    if not ruta.exists():
+        return
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if linea and not linea.startswith("#") and "=" in linea:
+            k, v = linea.split("=", 1)
+            k, v = k.strip().removeprefix("export ").strip(), v.strip().strip('"').strip("'")
+            if k and v:
+                os.environ.setdefault(k, v)
+
+
+_cargar_env(ROOT / ".env")
+
 DATA_RAW = ROOT / "data" / "raw"
 DATA_REFERENCE = ROOT / "data" / "reference"
 DATA_INTERIM = ROOT / "data" / "interim"
@@ -99,13 +115,15 @@ REFERENCIAS = {
 }
 
 # --------------------------------------------------------------------------- #
-# Ventanas temporales del modelado (serie de velocidad: feb-2017 a dic-2020)
+# Ventanas temporales del modelado
+# Por defecto: serie GT feb-2017 a dic-2020 (test hasta antes de COVID; drift = pandemia).
+# Con ARS (scripts/reentrenar_con_ars.py) se sobreescriben por variables de entorno.
 # --------------------------------------------------------------------------- #
-FECHA_INICIO = "2017-02-01"
+FECHA_INICIO = os.getenv("MOBIPREDICT_FECHA_INICIO", "2017-02-01")
 CORTE_VALIDACION = os.getenv("MOBIPREDICT_CORTE_VALID", "2019-09-01")   # train < corte
 CORTE_TEST = os.getenv("MOBIPREDICT_CORTE_TEST", "2019-12-01")          # valid < corte <= test
-FIN_TEST = "2020-03-20"            # inicio de las restricciones por COVID-19 en Medellín
-FIN_DRIFT = "2021-01-01"           # 2020-03-20..2020-12-31 = periodo de drift (pandemia)
+FIN_TEST = os.getenv("MOBIPREDICT_FIN_TEST", "2020-03-20")             # fin del periodo de prueba
+FIN_DRIFT = os.getenv("MOBIPREDICT_FIN_DRIFT", "2021-01-01")           # fin del periodo de drift
 
 # --------------------------------------------------------------------------- #
 # Modelado
@@ -145,6 +163,21 @@ COMPARISON_FILE = MODELS_DIR / "model_comparison.csv"
 ESCENARIOS_FILE = MODELS_DIR / "escenarios.json"       # momentos reales del periodo de prueba (frontend)
 FRONTEND_DIR = ROOT / "frontend"
 DECISION_FILE = DOCS_DIR / "model_decision.md"
+
+
+# --------------------------------------------------------------------------- #
+# Tiempo real (src/mobipredict/envivo.py). Las claves se leen del entorno o del archivo .env
+# de la raíz del proyecto (ver .env.example); nunca se guardan en el código ni en Git.
+# --------------------------------------------------------------------------- #
+ENVIVO_DIR = ROOT / "data" / "envivo"
+ENVIVO_DB = ENVIVO_DIR / "lecturas.sqlite"
+PUNTOS_ENVIVO = DATA_REFERENCE / "puntos_envivo.csv"   # punto de consulta de cada tramo (editable)
+ENV_FILE = ROOT / ".env"
+ZONA_HORARIA = "America/Bogota"
+# Horas locales en las que se recolecta (el modelo se entrenó con lecturas de 6 a 20 h)
+ENVIVO_HORA_INICIO = int(os.getenv("MOBIPREDICT_ENVIVO_HORA_INICIO", "5"))
+ENVIVO_HORA_FIN = int(os.getenv("MOBIPREDICT_ENVIVO_HORA_FIN", "21"))
+ENVIVO_CICLO_MIN = float(os.getenv("MOBIPREDICT_ENVIVO_CICLO_MIN", "5"))   # cada cuánto revisa el recolector
 
 
 def ensure_dirs() -> None:

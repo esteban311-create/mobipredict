@@ -1,5 +1,5 @@
 """Repetición de días reales: el modelo predice hora a hora un día completo del periodo de prueba
-(o de la pandemia) y se compara con lo que de verdad se midió una hora después.
+(o del holdout más reciente) y se compara con lo que de verdad se midió una hora después.
 
 Usa las particiones que deja el pipeline en data/processed/ (test y drift). Sus features salen del mismo
 código que el entrenamiento (`features.construir_features`), así que la predicción es idéntica a la de
@@ -64,6 +64,32 @@ def _r(x: float, nd: int = 2) -> float | None:
     return None if pd.isna(x) else round(float(x), nd)
 
 
+def _predecir_filas(filas: pd.DataFrame, estado: dict) -> pd.DataFrame:
+    """Ejecuta los dos modelos sobre las filas y agrega predicción, alerta, tiempos de viaje y aciertos."""
+    meta = estado["meta"]
+    umbral = float(meta["modelo_colapso"]["umbral_decision"])
+    X = filas[meta["features"]]
+    vel = np.maximum(estado["modelo_velocidad"].predict(X), 1.0)
+    prob = estado["modelo_colapso"].predict_proba(X)[:, 1]
+    f = filas.assign(vel_pred=vel, prob=prob, alerta=prob >= umbral, nivel=_nivel(prob, umbral))
+    return f.assign(tt_pred=f["longitud_km"] / f["vel_pred"] * 60,
+                    tt_real=f["longitud_km"] / f["y_velocidad_1h"] * 60,
+                    tt_perfil=f["longitud_km"] / f["perfil_velocidad"] * 60,
+                    acierto=f["alerta"] & f["y_colapso_1h"],
+                    anticipado=f["alerta"] & f["colapso_sin_aviso"])
+
+
+def valor(d: pd.DataFrame, estado: dict) -> dict:
+    """Cifras de valor sobre todo el periodo de prueba (datos que el modelo no vio al entrenar)."""
+    t = _predecir_filas(d[d["particion"] == "test"], estado)
+    res = _resumen(t)
+    return {"periodo": "test", "desde": t["timestamp"].min().isoformat(), "hasta": t["timestamp"].max().isoformat(),
+            "dias": int(t["fecha"].nunique()), "horizonte_min": int(estado["meta"]["horizonte_min"]),
+            "pct_colapsos_sin_aviso": round(res["colapsos_sin_aviso"] / res["colapsos_reales"], 4)
+            if res["colapsos_reales"] else None,
+            "alertas_por_dia": round(res["alertas"] / t["fecha"].nunique(), 1), **res}
+
+
 def repetir_dia(d: pd.DataFrame, fecha, estado: dict) -> dict | None:
     """Predice cada tramo-hora del día y lo compara con la medición real de la hora siguiente."""
     dia = d[d["fecha"] == fecha]
@@ -72,16 +98,7 @@ def repetir_dia(d: pd.DataFrame, fecha, estado: dict) -> dict | None:
     meta, store = estado["meta"], estado["store"]
     umbral = float(meta["modelo_colapso"]["umbral_decision"])
     horizonte = pd.Timedelta(minutes=meta["horizonte_min"])
-
-    X = dia[meta["features"]]
-    vel = np.maximum(estado["modelo_velocidad"].predict(X), 1.0)
-    prob = estado["modelo_colapso"].predict_proba(X)[:, 1]
-    dia = dia.assign(vel_pred=vel, prob=prob, alerta=prob >= umbral, nivel=_nivel(prob, umbral))
-    dia = dia.assign(tt_pred=dia["longitud_km"] / dia["vel_pred"] * 60,
-                     tt_real=dia["longitud_km"] / dia["y_velocidad_1h"] * 60,
-                     tt_perfil=dia["longitud_km"] / dia["perfil_velocidad"] * 60,
-                     acierto=dia["alerta"] & dia["y_colapso_1h"],
-                     anticipado=dia["alerta"] & dia["colapso_sin_aviso"])
+    dia = _predecir_filas(dia, estado)
 
     info = store["tramos"].set_index("tramo_id")
     tramos = []
@@ -98,6 +115,7 @@ def repetir_dia(d: pd.DataFrame, fecha, estado: dict) -> dict | None:
                 "velocidad_predicha_kmh": _r(r.vel_pred), "tiempo_viaje_predicho_min": _r(r.tt_pred),
                 "probabilidad_colapso": _r(r.prob, 4), "nivel": str(r.nivel), "alerta": bool(r.alerta),
                 "velocidad_real_kmh": _r(r.y_velocidad_1h), "tiempo_viaje_real_min": _r(r.tt_real),
+                "tiempo_viaje_perfil_min": _r(r.tt_perfil),
                 "colapso_real": bool(r.y_colapso_1h), "colapso_sin_aviso": bool(r.colapso_sin_aviso),
                 "anticipado": bool(r.anticipado),
             } for r in s.itertuples()],

@@ -52,6 +52,21 @@ Todo el flujo se ejecuta con un solo comando (`python run_pipeline.py`):
 
 **No se usan datos simulados en ningún punto.** Si una fuente obligatoria no está disponible, el pipeline se detiene con un error claro.
 
+### 1.1 Versión actual: modelo entrenado con las cámaras ARS (2019-2026)
+
+El proyecto se construyó primero con la serie abierta **GT** (tiempos de viaje por corredor, feb-2017 a dic-2020) y luego se reentrenó con una exportación de las **cámaras ARS/CCTV del SIMM** (velocidad por cámara y carril, sep-2019 a sep-2026). Los modelos de `models/`, la API y el frontend usan hoy la versión ARS. Lo que cambia:
+
+| Aspecto | Modelo anterior (GT) | Modelo actual (ARS) |
+| --- | --- | --- |
+| Serie de velocidad | Tiempo de viaje del corredor (Google Traffic agregado por la Alcaldía), datos abiertos | Velocidad en un punto (cámara/carril), exportación de bases diarias; el tiempo de viaje se estima con la longitud del tramo |
+| Periodo | feb-2017 a dic-2020 | sep-2019 a 3-sep-2026 |
+| Partición | train < 2019-09 ≤ valid < 2019-12 ≤ test < 2020-03-20 ≤ drift (pandemia) < 2021 | train < 2024 ≤ valid < 2025 ≤ test < 2026 ≤ drift (holdout reciente) ≤ 2026-09-03; la pandemia queda en train |
+| Ganador velocidad | LightGBM (RMSE test 3,61 km/h) | Red neuronal MLP (RMSE test 2,11 km/h, MAE 1,50, WAPE 5,9 %) |
+| Ganador colapso | Random Forest (PR-AUC test 0,64) | LightGBM (PR-AUC test 0,84, recall 0,79, precisión 0,74, umbral 0,348) |
+| Cómo se reproduce | `python run_pipeline.py` | `python scripts/convertir_ars_a_sensores.py` y `python scripts/reentrenar_con_ars.py` |
+
+Las métricas de las dos versiones **no son comparables 1 a 1**: cambian el sensor, el periodo y la tasa de colapso de prueba (11,9 % en 2025). La metadata GT queda en `models/metadata_antes_ars.json` y `GET /reentrenamiento` muestra las dos. El EDA (sección 7) sigue hecho con la serie GT. Las secciones 4 a 10 describen el pipeline general, que es el mismo para las dos series; donde algo es distinto para ARS se indica.
+
 ---
 
 ## 2. Qué predice el sistema
@@ -62,7 +77,7 @@ Todo el flujo se ejecuta con un solo comando (`python run_pipeline.py`):
 | Colapso a 1 hora | Clasificación binaria | Las mismas | Probabilidad de colapso, alerta sí/no y nivel (`normal`, `precaucion`, `colapso`) | Disparar alertas tempranas al centro de control |
 | Demanda y densidad | Análisis descriptivo | EOD 2025 | Viajes por hora y modo, reparto modal, viajes generados/atraídos por macrozona | Planeación; además alimenta el modelo como feature |
 
-**¿Por qué velocidad y no flujo vehicular?** La Alcaldía no publica conteos de vehículos abiertos y continuos para varios años. La serie abierta más larga y consistente es la de **velocidad y tiempo de viaje por corredor** (2017-2020). La velocidad es además la variable que mejor describe la congestión: el flujo puede ser igual en vía libre y en congestión, la velocidad no.
+**¿Por qué velocidad y no flujo vehicular?** La Alcaldía no publica conteos de vehículos abiertos y continuos para varios años. La serie abierta más larga y consistente es la de **velocidad y tiempo de viaje por corredor** (2017-2020); la versión actual usa la velocidad de las cámaras ARS del SIMM (2019-2026). La velocidad es además la variable que mejor describe la congestión: el flujo puede ser igual en vía libre y en congestión, la velocidad no.
 
 ---
 
@@ -124,7 +139,8 @@ Toda la configuración (URLs, rutas, fechas de corte, umbrales, tamaños de bús
 
 | # | Fuente | Publica | Uso | Cobertura verificada | Licencia |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [Velocidad y tiempo de viaje GT](https://www.datos.gov.co/d/7t5n-3b3w) | Secretaría de Movilidad de Medellín (SIMM), vía MEData | **Serie del modelo** | 682.502 filas; 22 tramos (11 corredores × 2 sentidos); 6:00-20:00; 1-feb-2017 a 15-dic-2020; 1.045 días con datos | Datos abiertos de la Alcaldía |
+| 1a | Cámaras ARS/CCTV del SIMM | Observatorio de Movilidad de Medellín, exportación de bases diarias (no es dato abierto) | **Serie del modelo actual** | 744.375 filas horarias; 22 tramos; 6:00-20:00; sep-2019 a 3-sep-2026; 2.368 de 2.601 archivos diarios con lecturas útiles | No publicada como dato abierto |
+| 1 | [Velocidad y tiempo de viaje GT](https://www.datos.gov.co/d/7t5n-3b3w) | Secretaría de Movilidad de Medellín (SIMM), vía MEData | **Serie del modelo anterior y del EDA** | 682.502 filas; 22 tramos (11 corredores × 2 sentidos); 6:00-20:00; 1-feb-2017 a 15-dic-2020; 1.045 días con datos | Datos abiertos de la Alcaldía |
 | 2 | [EOD 2025 — API del visor oficial](https://eod2025.metropol.gov.co/) | AMVA | Demanda horaria, reparto modal, motorización, matriz OD | 42 indicadores + matriz OD de 3.126 pares (67 macrozonas) | Datos públicos del AMVA |
 | 3 | [Road-traffic incidents and fatalities in Medellín 2008-2025](https://doi.org/10.17632/r6g5dfnpgh.1) | Correa Álvarez et al. (2026), Mendeley Data, con registros de la Secretaría de Movilidad | EDA de siniestralidad | 702.540 incidentes (2.762 fatales), 1-ene-2008 a 31-ago-2025 | CC BY 4.0 |
 | 4 | [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) | Open-Meteo (reanálisis ERA5 / ERA5-Land de Copernicus) | Lluvia horaria como feature | Medellín (6,2442; −75,5812), 2017-2020 | CC BY 4.0 |
@@ -139,7 +155,7 @@ El catálogo con URLs de descarga directa, tamaños y rutas locales está en [`d
 
 | Fuente | Por qué no se usó como base |
 | --- | --- |
-| Velocidad e intensidad vehicular (SIMM, CCTV/ARS) | Solo cubre julio-agosto de 2020 (431.490 filas), en plena pandemia: no representa operación normal |
+| Velocidad e intensidad vehicular (SIMM, CCTV/ARS), versión de datos abiertos | Solo cubre julio-agosto de 2020 (431.490 filas), en plena pandemia: no representa operación normal. **Después se obtuvo la exportación completa sep-2019 a sep-2026, que es la serie del modelo actual** (ver 1.1 y `scripts/convertir_ars_a_sensores.py`) |
 | Conteo vehicular Simmtrafficdata (855 MB) | Solo enero de 2021, en temporada de vacaciones. Se usó únicamente para obtener la ubicación de las cámaras |
 | Incidentes viales MEData | Llega a 2020. La base de Mendeley, con el mismo origen administrativo, llega a agosto de 2025 |
 | Microdatos de la EOD (2017 o 2025) | El portal de datos abiertos del AMVA respondió 403. Se usaron los agregados oficiales de la API del visor, que incluyen la matriz OD |
@@ -303,6 +319,8 @@ flowchart TD
 
 `eda.ejecutar_eda()` lee solo tablas de `data/interim/` y produce 9 figuras, un reporte y tablas auxiliares.
 
+Las figuras del EDA se generaron con la **serie GT 2017-2020** y no se regeneraron con ARS (el EDA usa `FIN_TEST` como frontera pre-pandemia, que en la versión ARS es 2026). Las cifras del problema con ARS están en `docs/problema_usuarios_valor.md`.
+
 En el EDA, la velocidad de referencia de cada tramo es el **percentil 95 de su velocidad antes de la pandemia** (antes del 20-mar-2020). Con ella se definen:
 
 - **Índice de congestión** = 1 − velocidad / velocidad de referencia (recortado en 0). Vale 0 en vía libre y se acerca a 1 en atasco.
@@ -434,6 +452,17 @@ Las participaciones horarias capturan la forma de la demanda a lo largo del día
 
 En series de tiempo **nunca** se mezclan filas al azar: el modelo se entrena con el pasado y se evalúa con el futuro.
 
+**Versión actual (ARS):**
+
+| Partición | Rango | Filas | Tasa de colapso | Uso |
+| --- | --- | --- | --- | --- |
+| `train` | 2019-09-01 → 2023-12-31 | 423.483 | 7,3 % | Ajuste de modelos, búsqueda de hiperparámetros, perfil y velocidades de referencia. Incluye la pandemia |
+| `valid` | 2024-01-01 → 2024-12-31 | 84.172 | 11,2 % | Selección del modelo y del umbral de alerta |
+| `test` | 2025-01-01 → 2025-12-31 | 111.484 | 11,9 % | Estimación final del desempeño (no se usa para decidir nada) |
+| `drift` | 2026-01-01 → 2026-09-03 | 70.606 | 13,9 % | Holdout reciente: datos posteriores que nadie miró al elegir |
+
+**Versión anterior (GT):**
+
 | Partición | Rango | Uso |
 | --- | --- | --- |
 | `train` | 2017-02-01 → 2019-08-31 | Ajuste de modelos, búsqueda de hiperparámetros, perfil y velocidades de referencia |
@@ -442,8 +471,9 @@ En series de tiempo **nunca** se mezclan filas al azar: el modelo se entrena con
 | `drift` | 2020-03-20 → 2020-12-31 | Prueba de estrés: pandemia, cambio de régimen |
 
 - **Frontera sin fuga:** se descarta la última hora de cada partición cuyo objetivo (t + 1 h) caería en la partición siguiente.
-- **Por qué cortar en el 20-mar-2020:** ese día empezaron las restricciones de movilidad en Medellín. El EDA (figura 07) muestra el desplome de la congestión. Incluir la pandemia en el entrenamiento enseñaría al modelo un régimen excepcional; dejarla aparte permite medir qué tan mal se comporta un modelo cuando el mundo cambia, que es exactamente lo que el monitoreo de drift debe detectar.
-- Las fechas son configurables (`MOBIPREDICT_CORTE_VALID`, `MOBIPREDICT_CORTE_TEST`).
+- **Por qué, en la versión GT, se cortó en el 20-mar-2020:** ese día empezaron las restricciones de movilidad en Medellín. El EDA (figura 07) muestra el desplome de la congestión. Incluir la pandemia en el entrenamiento enseñaría al modelo un régimen excepcional; dejarla aparte permite medir qué tan mal se comporta un modelo cuando el mundo cambia, que es exactamente lo que el monitoreo de drift debe detectar.
+- **En la versión ARS** la pandemia queda en el entrenamiento: con siete años de datos, el periodo útil para probar es el tráfico actual (2025) y lo más reciente (2026). La tasa de colapso sube de una partición a la siguiente (la congestión crece año a año), así que el holdout 2026 es una prueba de estrés en la dirección contraria a la pandemia.
+- Las fechas son configurables con `MOBIPREDICT_FECHA_INICIO`, `MOBIPREDICT_CORTE_VALID`, `MOBIPREDICT_CORTE_TEST`, `MOBIPREDICT_FIN_TEST` y `MOBIPREDICT_FIN_DRIFT`; `scripts/reentrenar_con_ars.py` fija los cortes ARS.
 
 Salidas: `data/processed/{train,valid,test,drift}.parquet` y `feature_spec.json`, que guarda features, cortes, filas por partición y tasa de colapso por partición.
 
@@ -570,7 +600,7 @@ Las reglas se fijaron **antes** de ver resultados (`selection.py`) y se aplican 
 **Salidas:**
 
 - `models/model_comparison.csv`: todos los modelos con todas las métricas.
-- `docs/model_decision.md`: resumen, datos y protocolo, tablas por tarea, razonamiento, prueba de estrés de la pandemia y riesgos.
+- `docs/model_decision.md`: resumen, datos y protocolo, tablas por tarea, razonamiento, prueba de estrés en el periodo de drift (holdout 2026 con ARS; pandemia con GT) y riesgos. El texto del drift y de los riesgos se ajusta solo según la serie.
 - `models/modelo_velocidad.joblib` y `models/modelo_colapso.joblib`.
 - `models/metadata.json`: nombres, run ids, registro, umbral, métricas de prueba, features y fuentes.
 
@@ -639,7 +669,7 @@ Documentación interactiva en `http://localhost:8000/docs`.
 
 `frontend/` es una página en HTML, CSS y JavaScript sin dependencias ni compilación; la sirve la misma API en `http://localhost:8000` (montada en `/app/`). Funciona sin internet: si no puede cargar la tipografía de Google Fonts, usa una del sistema.
 
-**Escenarios reales.** Al preparar el dataset, `features.exportar_escenarios` guarda en `models/escenarios.json` varios momentos del **periodo de prueba** (datos que el modelo nunca vio): media mañana, mediodía, inicio y pico de la tarde, la tarde con más lluvia y la hora previa a más colapsos. Se evitan las 3 semanas anteriores a la cuarentena y se agrega un pico de la tarde de la cuarentena de 2020 (periodo de drift). Para cada tramo guarda hasta 6 lecturas consecutivas hasta la hora t y la velocidad **medida** en t + 1 h.
+**Escenarios reales.** Al preparar el dataset, `features.exportar_escenarios` guarda en `models/escenarios.json` varios momentos del **periodo de prueba** (datos que el modelo nunca vio): media mañana, mediodía, inicio y pico de la tarde, la tarde con más lluvia y la hora previa a más colapsos. Se agrega un pico de la tarde del periodo de drift: con ARS, "Holdout 2026"; con GT, la cuarentena de 2020 (y entonces se evitan las 3 semanas previas). Para cada tramo guarda hasta 6 lecturas consecutivas hasta la hora t y la velocidad **medida** en t + 1 h.
 
 **Qué hace la página:**
 
@@ -710,7 +740,8 @@ Variables de entorno:
 
 ## 20. Cómo actualizar con datos nuevos
 
-1. **Velocidades recientes (SIMM).** Coloque un CSV con las mismas 20 columnas en `data/raw/medata_velocidad_tiempo_viaje_gt.csv`. Si llega en otro formato, adapte solo `fuentes.leer_velocidad_gt`, cuyo contrato es devolver `tramo_id, timestamp, velocidad_kmh`. Ajuste los cortes temporales en `config.py` o con variables de entorno.
+1. **Nueva exportación de cámaras ARS (camino actual).** Coloque los `.csv.gz` diarios en una carpeta y corra `python scripts/convertir_ars_a_sensores.py --entrada <carpeta>` y luego `python scripts/reentrenar_con_ars.py` (`--fast` para menos búsqueda, `--sin-clima` para no volver a bajar la lluvia). Ajuste en el script los cortes si cambia el periodo.
+1. **Velocidades GT recientes (SIMM).** Coloque un CSV con las mismas 20 columnas en `data/raw/medata_velocidad_tiempo_viaje_gt.csv`. Si llega en otro formato, adapte solo `fuentes.leer_velocidad_gt`, cuyo contrato es devolver `tramo_id, timestamp, velocidad_kmh`. Ajuste los cortes temporales en `config.py` o con variables de entorno.
 2. **Nueva EOD.** Cambie `MOBIPREDICT_EOD_API` y regenere `data/reference/eod2025_macrozonas.csv` si cambian los ids de macrozona.
 3. **Lluvia del SIATA.** Reemplace el CSV de clima con columnas `timestamp, lluvia_mm`.
 4. **Reentrenar.** `python run_pipeline.py --descargar` (o `RETRAIN=1 docker compose up trainer`) y `POST /admin/reload` en la API.
@@ -721,15 +752,15 @@ Variables de entorno:
 
 | Tema | Decisión o supuesto | Consecuencia |
 | --- | --- | --- |
-| Desfase temporal | La serie abierta de velocidad termina en dic-2020; la EOD es de 2025 | El modelo aprende la dinámica 2017-2020 y usa la EOD como prior de demanda (forma horaria y jerarquía de macrozonas, que se asumen estables). Para operar hoy hay que reentrenar con el feed actual del SIMM |
-| Origen de las velocidades | Tiempos de viaje de Google Traffic agregados por la Alcaldía | Mide el tramo completo, no un punto; no distingue carriles ni tipos de vehículo |
+| Desfase temporal | Con ARS, la velocidad llega a sep-2026 y la EOD es de 2025 | El desfase casi desaparece. La exportación ARS no es un feed en línea: para operar hay que conectar el feed del SIMM. (Con GT, la velocidad terminaba en dic-2020) | El modelo aprende la dinámica 2017-2020 y usa la EOD como prior de demanda (forma horaria y jerarquía de macrozonas, que se asumen estables). Para operar hoy hay que reentrenar con el feed actual del SIMM |
+| Origen de las velocidades | ARS: velocidad por cámara y carril, promediada por tramo y hora. GT: tiempos de viaje de Google Traffic agregados por la Alcaldía | ARS mide un punto, no el tramo completo; el tiempo de viaje se estima con la longitud del tramo. Las métricas ARS y GT no se comparan 1 a 1 | Mide el tramo completo, no un punto; no distingue carriles ni tipos de vehículo |
 | Sin flujo vehicular | No hay conteos abiertos continuos | Se predice velocidad y tiempo de viaje |
 | Sin noches | Solo 6:00-20:00 | Las predicciones de las 6:00 tienen menos contexto (sin rezagos) |
 | Velocidad de referencia | Percentil 95 diurno | Aproxima la velocidad de flujo libre; puede subestimarla en corredores siempre cargados |
 | Umbral de colapso | 50 % de la referencia | Configurable; debe validarse con la autoridad de tránsito |
 | Clima | Reanálisis ERA5 en un punto | Puede perder aguaceros muy locales; el SIATA sería mejor |
 | Siniestralidad | La base cuenta incidentes y llega a ago-2025 | El cierre oficial de 2025 (276) cuenta personas fallecidas; se reportan por separado |
-| Pandemia | Fuera de train/valid/test | Se usa como prueba de estrés del drift |
+| Pandemia | GT: fuera de train/valid/test. ARS: dentro del entrenamiento | GT: prueba de estrés del drift. ARS: el drift es el holdout ene-sep 2026 | Se usa como prueba de estrés del drift |
 | Macrozona del tramo | Centroide más cercano a la ubicación media de las cámaras | Aproximación; un tramo largo cruza varias macrozonas |
 
 ---

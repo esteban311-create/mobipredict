@@ -2,7 +2,7 @@
 
 > **En una frase:** MobiPredict le dice al centro de control de movilidad de Medellín **qué vía va a colapsar en la próxima hora**, para que actúe *antes* del trancón y no después.
 
-Este documento responde tres preguntas: **qué problema hay, a quién le duele y qué gana con MobiPredict**. Cada cifra sale de los datos reales del proyecto (`eda/reports/eda_summary.json`, `docs/model_decision.md`) o de una fuente pública citada al final.
+Este documento responde tres preguntas: **qué problema hay, a quién le duele y qué gana con MobiPredict**. Cada cifra sale de los datos reales del proyecto (`GET /valor`, `docs/model_decision.md` y las particiones de `data/processed/`, todo con las cámaras ARS 2019-2026) o de una fuente pública citada al final.
 
 ---
 
@@ -16,12 +16,12 @@ Hoy el Sistema Inteligente de Movilidad de Medellín (SIMM) ve el tráfico **en 
 
 ### 1.2 El dato que lo demuestra
 
-En el periodo de prueba (dic-2019 a mar-2020, 108 días, 22 tramos viales):
+En el periodo de prueba (todo 2025: 365 días, 22 tramos viales medidos por las cámaras ARS del SIMM):
 
-- Hubo **2.480 horas-tramo en colapso** (velocidad por debajo de la mitad de lo normal).
-- **1.195 de ellas (48 %) empezaron en una vía que una hora antes circulaba bien.**
+- Hubo **13.312 horas-tramo en colapso** (velocidad por debajo de la mitad de lo normal).
+- **3.916 de ellas (29 %) empezaron en una vía que una hora antes circulaba bien.**
 
-> **Casi la mitad de los colapsos son invisibles para quien solo mira el tráfico actual.** El operador no tenía ninguna señal de alarma. Ese es el hueco que llena MobiPredict.
+> **Casi 3 de cada 10 colapsos son invisibles para quien solo mira el tráfico actual.** El operador no tenía ninguna señal de alarma. Ese es el hueco que llena MobiPredict.
 
 ### 1.3 Por qué importa (impacto)
 
@@ -29,13 +29,14 @@ En el periodo de prueba (dic-2019 a mar-2020, 108 días, 22 tramos viales):
 | --- | --- | --- |
 | Viajes en un día hábil en el Valle de Aburrá | **6.490.299** | Cualquier mejora, por pequeña que sea, se multiplica por millones de viajes |
 | Tiempo promedio de un viaje | **39,3 min** | Una parte de ese tiempo es congestión evitable |
-| Horas laborables en colapso (22 tramos, antes de la pandemia) | **13 %** | En promedio, cada vía pasa 1 de cada 8 horas laborables colapsada |
-| Tramo más crítico: Av. Ferrocarril (sur-norte) | **33 % de sus horas** | 1 de cada 3 horas, esa vía está colapsada |
-| Colapso en hora pico **sin lluvia** frente a **con lluvia fuerte** (> 3 mm/h) | **15 % → 34 %** | La lluvia, tan común en Medellín, duplica el riesgo; es predecible y hoy no se usa para anticipar |
+| Horas laborables en colapso (22 tramos, 2025) | **14,9 %** | En promedio, cada vía pasa 1 de cada 7 horas laborables colapsada |
+| Tramo más crítico en 2025: Autopista Sur (norte-sur) | **57 % de sus horas laborables** | Más de la mitad del tiempo, esa vía está colapsada |
+| Tasa de colapso por año (todas las horas, 6-20 h) | **6,7 % (sep-dic 2019) → 12,0 % (2025) → 14,0 % (ene-sep 2026)** | La congestión casi se duplicó en seis años; con la pandemia bajó a 3,7 % (2020) y luego volvió a subir |
+| Colapso en hora pico laborable **sin lluvia** frente a **con lluvia fuerte** (> 3 mm/h), 2019-2026 | **10,7 % → 20,5 %** | La lluvia, tan común en Medellín, casi duplica el riesgo; es predecible y hoy no se usa para anticipar |
 | Motos por cada 1.000 habitantes | **120,5** (frente a 67,1 autos) | Crecieron **+48 %** entre 2017 y 2025 y el transporte público cayó **−14 %**: hay más vehículos en las mismas vías |
-| Muertes en vías de Medellín en 2025 | **276** (162 motociclistas, 100 peatones) | La congestión y la siniestralidad se cruzan: **las 17 h es a la vez la hora pico de tráfico y la hora con más incidentes** (2008-2025) |
+| Muertes en vías de Medellín en 2025 | **276** (162 motociclistas, 100 peatones) | La congestión y la siniestralidad se cruzan: **las 17 h es a la vez la hora con más colapsos (27 % de las horas-tramo laborables en 2025) y la hora con más incidentes** (2008-2025) |
 
-**Resumen del impacto:** millones de personas pierden tiempo todos los días en colapsos que, en buena parte, empiezan sin aviso. La tendencia empeora: más motos y menos transporte público. Las herramientas actuales solo describen el presente.
+**Resumen del impacto:** millones de personas pierden tiempo todos los días en colapsos que, en buena parte, empiezan sin aviso. La tendencia empeora: la tasa de colapso casi se duplicó entre 2019 y 2026, con más motos y menos transporte público. Las herramientas actuales solo describen el presente.
 
 ---
 
@@ -57,13 +58,13 @@ Medidos en el **periodo de prueba**, datos que el modelo nunca vio durante el en
 
 | # | Beneficio | Usuario | Evidencia |
 | --- | --- | --- | --- |
-| 1 | **Ve colapsos que hoy son invisibles.** Avisa con **1 hora de anticipación** en vías que todavía circulan bien | Operador | De los 1.195 colapsos que empezaron "sin aviso", MobiPredict anticipó **407 (34 %)**. El monitoreo en tiempo real anticipa **0** |
-| 2 | **Detecta más colapsos y con menos ruido** que la regla actual ("si está lento ahora, estará lento después") | Operador | Detecta el **62 %** de los colapsos (frente a 52 %) y acierta en el **59 %** de sus alertas (frente a 52 %) |
-| 3 | **Prioriza recursos.** Ordena las 22 vías por riesgo de colapso para la próxima hora | Operador | Unas **24 alertas al día** en toda la red: un volumen que un operador puede revisar |
-| 4 | **Tiempo de viaje confiable** para la próxima hora | Ciudadano | Error medio de **0,86 min** en viajes de ~9 min por tramo, un **30 % más preciso** que el promedio histórico de esa hora (1,23 min) |
-| 5 | **Anticipa el efecto de la lluvia** | Operador y ciudadano | Usa la lluvia actual y la de las últimas 3 h; la lluvia fuerte duplica el riesgo de colapso en hora pico |
+| 1 | **Ve colapsos que hoy son invisibles.** Avisa con **1 hora de anticipación** en vías que todavía circulan bien | Operador | De los 3.916 colapsos que empezaron "sin aviso", MobiPredict anticipó **1.475 (38 %)**. El monitoreo en tiempo real anticipa **0** |
+| 2 | **Detecta más colapsos y con menos ruido** que la regla actual ("si está lento ahora, estará lento después") | Operador | Detecta el **79 %** de los colapsos (frente a 71 %) y acierta en el **74 %** de sus alertas (frente a 70 %) |
+| 3 | **Prioriza recursos.** Ordena las 22 vías por riesgo de colapso para la próxima hora | Operador | Unas **39 alertas al día** en toda la red (unas 10 falsas): un volumen que un operador puede revisar |
+| 4 | **Tiempo de viaje confiable** para la próxima hora | Ciudadano | Error medio de **0,63 min** en viajes de ~9,5 min por tramo, un **64 % más preciso** que el promedio histórico de esa hora (1,77 min) |
+| 5 | **Anticipa el efecto de la lluvia** | Operador y ciudadano | Usa la lluvia actual y la de las últimas 3 h; la lluvia fuerte casi duplica el riesgo de colapso en hora pico |
 | 6 | **Explica la congestión** con datos oficiales | Planeador | Tramos críticos, horas de colapso, demanda por macrozona (EOD 2025), siniestralidad 2008-2025 |
-| 7 | **Costo bajo** | Secretaría | Usa datos abiertos que la Alcaldía ya publica y software libre; no requiere sensores nuevos |
+| 7 | **Costo bajo** | Secretaría | Usa las cámaras que el SIMM ya tiene, datos abiertos y software libre; no requiere sensores nuevos |
 
 ### 3.2 Antes y después
 
@@ -78,9 +79,9 @@ Medidos en el **periodo de prueba**, datos que el modelo nunca vio durante el en
 ### 3.3 Qué hace única a la solución (diferenciación)
 
 1. **Anticipa, no describe.** Los tableros actuales (SIMM, Observatorio de Movilidad, Google Maps) muestran el presente. MobiPredict predice la próxima hora y lo convierte en una **alerta con nivel de riesgo**.
-2. **Une fuentes oficiales que hoy están separadas:** velocidades del SIMM, lluvia, festivos y la **Encuesta Origen-Destino 2025** del AMVA (6,49 M de viajes) como señal de demanda por hora y por zona.
-3. **100 % datos reales y abiertos**, con origen y huella de cada archivo. No hay datos simulados.
-4. **Probado contra un cambio extremo.** Se evaluó en la pandemia de 2020 (un "terremoto" en el tráfico) y siguió funcionando: detectó colapsos con PR-AUC 0,67, frente a 0,45 de la regla simple.
+2. **Une fuentes oficiales que hoy están separadas:** velocidades de las cámaras ARS del SIMM, lluvia, festivos y la **Encuesta Origen-Destino 2025** del AMVA (6,49 M de viajes) como señal de demanda por hora y por zona.
+3. **100 % datos reales:** cámaras del SIMM (2019-2026) y fuentes abiertas, con origen y huella de cada archivo. No hay datos simulados.
+4. **Probado en datos que nunca vio.** Se evaluó en ene-sep 2026, un periodo con más congestión que el de prueba (14 % de colapso frente a 12 %), y se sostuvo: PR-AUC 0,84, frente a 0,69 de la regla simple. La pandemia de 2020 quedó dentro del entrenamiento, así que el modelo ya conoce un cambio extremo de régimen.
 5. **Listo para operar:** API, página web, registro de modelos y reentrenamiento con un comando.
 
 ---
@@ -88,7 +89,7 @@ Medidos en el **periodo de prueba**, datos que el modelo nunca vio durante el en
 ## 4. Cómo crece (escalabilidad)
 
 - **Más vías:** agregar un tramo es agregar sus lecturas al CSV; el modelo es uno solo para toda la red.
-- **Datos actuales:** al conectar el feed vigente del SIMM (o un CSV con las mismas columnas) se reentrena con `python run_pipeline.py --descargar` y se recarga la API sin apagarla (`POST /admin/reload`).
+- **Datos actuales:** con una nueva exportación de las cámaras ARS se reentrena con `python scripts/convertir_ars_a_sensores.py` y `python scripts/reentrenar_con_ars.py`, y se recarga la API sin apagarla (`POST /admin/reload`). El mismo camino sirve para el feed en línea del SIMM.
 - **Otras ciudades del Valle de Aburrá:** la EOD 2025 ya cubre los 10 municipios.
 - **Siguientes versiones:** horizontes de 15 y 30 minutos, lluvia por estación del SIATA, un modelo de grafos que aprenda cómo se contagia el trancón de una vía a otra, y alertas push a ciudadanos.
 
@@ -98,23 +99,25 @@ Medidos en el **periodo de prueba**, datos que el modelo nunca vio durante el en
 
 | Limitación | Respuesta |
 | --- | --- |
-| La serie abierta de velocidades termina en dic-2020 | Es la más reciente que publica la Alcaldía (verificado en MEData y datos.gov.co, nov-2026). El sistema queda **listo para conectarse** al feed actual |
-| Detecta el 62 % de los colapsos, por debajo de la meta interna del 70 % | Supera a la regla actual en detección y en precisión. El umbral se puede bajar para detectar más a cambio de más falsas alarmas, según lo que decida el operador |
+| La serie de las cámaras ARS es una exportación (hasta el 3-sep-2026), no un feed en línea, y no se descarga sola como las fuentes abiertas | El sistema queda **listo para conectarse** al feed del SIMM; mientras tanto, el modo en vivo usa TomTom, HERE y Google calibrados a la escala del SIMM |
+| Las cámaras ARS miden la velocidad en un punto, no el tiempo de viaje del corredor | El tiempo de viaje se estima con la longitud del tramo. Por eso las métricas no se comparan 1 a 1 con el modelo anterior (sensores GT 2017-2020) |
+| Una de cada cuatro alertas es falsa (unas 10 al día en la red) | El operador las descarta en segundos. El umbral se puede mover para detectar más o alertar menos, según lo que decida el operador |
 | No predice flujo vehicular (número de carros) | No hay conteos abiertos y continuos; la velocidad describe mejor la congestión que el flujo |
 
 ---
 
 ## 6. Cómo se calcularon las cifras de valor
 
-- **Periodo de prueba:** 1-dic-2019 a 19-mar-2020 (108 días, 30.060 tramo-horas), fuera del entrenamiento.
+- **Periodo de prueba:** 1-ene-2025 a 31-dic-2025 (365 días, 111.484 tramo-horas, 22 tramos), fuera del entrenamiento (2019-2023) y de la validación (2024). Son las cifras que devuelve `GET /valor`.
 - **Colapso:** velocidad menor al 50 % de la velocidad de referencia del tramo (percentil 95 del entrenamiento).
 - **Colapso "sin aviso":** colapso en t+1 h en un tramo con velocidad ≥ 50 % de su referencia en t.
 - **Regla actual (reactiva):** "habrá colapso en t+1 h si hay colapso en t".
 - **Tiempo de viaje:** longitud del tramo / velocidad. Se compara con la velocidad real medida en t+1 h.
-- Modelos: `models/modelo_velocidad.joblib` (LightGBM) y `models/modelo_colapso.joblib` (Random Forest, umbral 0,661), sobre `data/processed/test.parquet`.
+- Modelos: `models/modelo_velocidad.joblib` (red neuronal MLP) y `models/modelo_colapso.joblib` (LightGBM, umbral 0,348), sobre `data/processed/test.parquet`.
+- Las cifras de tendencia anual, tramo crítico y lluvia se calculan sobre las particiones de `data/processed/` (sep-2019 a sep-2026, solo 6-20 h).
 
 ## Fuentes
 
-- Datos del modelo y del EDA: ver [`docs/fuentes_de_datos.md`](fuentes_de_datos.md) y [`data/fuentes_datos.csv`](../data/fuentes_datos.csv).
+- Datos del modelo: cámaras ARS/CCTV del SIMM (Observatorio de Movilidad de Medellín), exportación diaria sep-2019 a sep-2026. Datos del EDA y demás fuentes: ver [`docs/fuentes_de_datos.md`](fuentes_de_datos.md) y [`data/fuentes_datos.csv`](../data/fuentes_datos.csv).
 - 276 muertes viales en 2025: Observatorio de Movilidad de Medellín, vía [El Colombiano](https://www.elcolombiano.com/medellin/balance-de-accidentalidad-en-medellin-el-ano-pasado-PF32374139).
 - +48 % motos y −14 % transporte público 2017-2025: resultados EOD 2025 (AMVA), vía [El Colombiano](https://www.elcolombiano.com/medellin/movilidad-habitantes-medellin-aburra-disminucion-teletrabajo-DD36063145).

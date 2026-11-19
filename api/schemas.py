@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 # GET /escenarios y GET /escenarios/{id} (models/escenarios.json, generado por el pipeline).
 EJEMPLO_TRAMO = "AVENIDA_80_NS"
 EJEMPLO_OBS = [
-    {"timestamp": "2020-02-11T14:00:00", "velocidad_kmh": 24.0, "lluvia_mm": 0.0},
-    {"timestamp": "2020-02-11T15:00:00", "velocidad_kmh": 22.0, "lluvia_mm": 0.0},
-    {"timestamp": "2020-02-11T16:00:00", "velocidad_kmh": 19.0, "lluvia_mm": 0.4},
-    {"timestamp": "2020-02-11T17:00:00", "velocidad_kmh": 15.0, "lluvia_mm": 1.2},
+    {"timestamp": "2025-02-11T14:00:00", "velocidad_kmh": 24.0, "lluvia_mm": 0.0},
+    {"timestamp": "2025-02-11T15:00:00", "velocidad_kmh": 22.0, "lluvia_mm": 0.0},
+    {"timestamp": "2025-02-11T16:00:00", "velocidad_kmh": 19.0, "lluvia_mm": 0.4},
+    {"timestamp": "2025-02-11T17:00:00", "velocidad_kmh": 15.0, "lluvia_mm": 1.2},
 ]
 
 

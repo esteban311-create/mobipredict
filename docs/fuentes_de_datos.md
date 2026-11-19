@@ -6,12 +6,13 @@ Todas las fuentes son abiertas y reales. No hay datos simulados en el pipeline. 
 
 | # | Fuente | Publica | Qué aporta al proyecto | Cobertura verificada | Formato y tamaño | Licencia |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | [Velocidad y tiempo de viaje GT](https://www.datos.gov.co/d/7t5n-3b3w) | Secretaría de Movilidad de Medellín (SIMM), vía MEData | **Serie del modelo:** velocidad y tiempo de viaje por tramo | 22 tramos (11 corredores × 2 sentidos), 6:00-20:00, 1-feb-2017 a 15-dic-2020, 682.502 filas, 1.045 días | CSV, 89,8 MB | Datos abiertos Alcaldía de Medellín |
+| 1 | Cámaras ARS/CCTV del SIMM (velocidad e intensidad por cámara y carril) | Observatorio de Movilidad de Medellín (SIMM) — exportación de bases diarias `.csv.gz` (no es descarga pública) | **Serie del modelo actual:** velocidad media por tramo y hora | 22 tramos, 6:00-20:00, sep-2019 a 3-sep-2026; 2.601 archivos diarios (2.368 con lecturas útiles) → 744.375 filas horarias | CSV.gz, carpeta `Datos_camaras_ARS` | No publicada como dato abierto |
+| 1b | [Velocidad y tiempo de viaje GT](https://www.datos.gov.co/d/7t5n-3b3w) | Secretaría de Movilidad de Medellín (SIMM), vía MEData | **Serie del modelo anterior y del EDA:** velocidad y tiempo de viaje por tramo | 22 tramos (11 corredores × 2 sentidos), 6:00-20:00, 1-feb-2017 a 15-dic-2020, 682.502 filas, 1.045 días | CSV, 89,8 MB | Datos abiertos Alcaldía de Medellín |
 | 2 | [EOD 2025 — visor oficial](https://eod2025.metropol.gov.co/) | Área Metropolitana del Valle de Aburrá | Demanda: 6.490.299 viajes en día hábil, viajes por hora y modo, reparto modal, motorización, **matriz OD de 67 macrozonas** | Valle de Aburrá, 10 municipios, día hábil 2025 | API JSON pública (`/api/api/indicadores/{id}/agregado`) + GeoJSON de macrozonas | Datos públicos del AMVA |
 | 3 | [Road-traffic incidents and fatalities in Medellín 2008-2025](https://doi.org/10.17632/r6g5dfnpgh.1) | Correa Álvarez et al. (2026), Mendeley Data, a partir de registros de la Secretaría de Movilidad | Siniestralidad georreferenciada | 702.540 incidentes, 1-ene-2008 a 31-ago-2025 (2.762 fatales) | ZIP con XLSX, 63 MB | CC BY 4.0 |
-| 4 | [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) | Open-Meteo (reanálisis ERA5 / ERA5-Land de Copernicus) | Lluvia y temperatura horaria en Medellín | 2017-2020, horario | API JSON | CC BY 4.0 |
+| 4 | [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) | Open-Meteo (reanálisis ERA5 / ERA5-Land de Copernicus) | Lluvia y temperatura horaria en Medellín | 2019-2026 (modelo ARS); 2017-2020 (modelo GT), horario | API JSON | CC BY 4.0 |
 | 5 | [Aforos vehiculares](https://www.datos.gov.co/d/b9s9-jw7c) | Secretaría de Movilidad de Medellín, vía MEData | Composición vehicular (≈ 40 % motos) por hora | 74.900 registros de 15 min, 2017-2019, hasta 113 intersecciones | CSV, 19,7 MB | Datos abiertos Alcaldía de Medellín |
-| 6 | Calendario de festivos de Colombia | Paquete [`holidays`](https://pypi.org/project/holidays/) (Ley 51 de 1983) | Festivos para el tipo de día | 2017-2026 | Calculado en código | MIT |
+| 6 | Calendario de festivos de Colombia | Paquete [`holidays`](https://pypi.org/project/holidays/) (Ley 51 de 1983) | Festivos para el tipo de día | 2017-2027 | Calculado en código | MIT |
 | 7 | Cifras publicadas de referencia | Observatorio de Movilidad / AMVA, vía [El Colombiano](https://www.elcolombiano.com/medellin/balance-de-accidentalidad-en-medellin-el-ano-pasado-PF32374139) | 276 muertes viales en Medellín en 2025 (162 motociclistas, 100 peatones); +48 % tenencia de motos y −14 % participación del TP entre 2017 y 2025 ([nota](https://www.elcolombiano.com/medellin/movilidad-habitantes-medellin-aburra-disminucion-teletrabajo-DD36063145)) | 2025 | Texto | — |
 
 URLs de descarga directa usadas por `src/mobipredict/data_acquisition.py`:
@@ -26,8 +27,8 @@ URLs de descarga directa usadas por `src/mobipredict/data_acquisition.py`:
 
 | Fuente revisada | Decisión | Motivo |
 | --- | --- | --- |
-| Velocidad y tiempo de viaje GT | **Elegida** como serie del modelo | Es la serie abierta más larga por corredor (casi 4 años), con resolución horaria y los corredores principales. Permite un split temporal con validación y prueba reales, y un periodo de drift (pandemia). |
-| Velocidad e intensidad vehicular (SIMM, CCTV/ARS) | Descartada | Solo cubre julio y agosto de 2020 (431.490 filas), en plena pandemia. No representa la operación normal. |
+| Velocidad y tiempo de viaje GT | **Elegida** para el primer modelo y el EDA; hoy es el respaldo | Es la serie abierta más larga por corredor (casi 4 años), con resolución horaria y los corredores principales. Permitió un split temporal con validación y prueba reales, y un periodo de drift (pandemia). Termina en dic-2020. |
+| Velocidad e intensidad vehicular (SIMM, CCTV/ARS) | **Elegida** como serie del modelo actual | La versión publicada en datos abiertos solo cubre julio y agosto de 2020 (431.490 filas), en plena pandemia, y por eso se descartó al principio. Luego se obtuvo la exportación completa de bases diarias (sep-2019 a sep-2026): siete años, con datos de 2024-2026 para validar y probar con tráfico actual. |
 | Conteo vehicular Simmtrafficdata | Usada solo para ubicar corredores | 855 MB, pero solo enero de 2021 (cada 5 min). Sirvió para obtener la ubicación real de las cámaras por corredor (`data/reference/corredores_simm.csv`). |
 | Incidentes viales MEData | Reemplazada | Llega a 2020. La base de Mendeley (misma fuente administrativa) llega a agosto de 2025. |
 | Microdatos EOD (2017 o 2025) | No disponibles | El portal de datos abiertos del AMVA respondió 403 a las consultas. Se usan los agregados oficiales de la API del visor EOD 2025, que incluyen la matriz OD por macrozona. |
@@ -43,10 +44,14 @@ URLs de descarga directa usadas por `src/mobipredict/data_acquisition.py`:
 | Velocidad GT | El ID de corredor 13/14 se usa a veces para Guayabal y para El Poblado; `INICIO`/`FIN` y la longitud varían levemente. | El tramo se identifica por nombre del corredor + sentido; la longitud es la mediana. |
 | Velocidad GT | Encabezados y nombres de día con caracteres dañados (`Mi�rcoles`). | Lectura UTF-8 con reemplazo y columnas por posición. |
 | Velocidad GT | No hay lecturas entre 21:00 y 5:59. | Los rezagos no cruzan la noche; no se imputa. |
-| Velocidad GT | Marzo-diciembre de 2020 es un régimen distinto (pandemia). | Fuera de entrenamiento, validación y prueba; se usa como prueba de estrés de drift. |
+| Velocidad GT | Marzo-diciembre de 2020 es un régimen distinto (pandemia). | En el modelo GT: fuera de entrenamiento, validación y prueba; se usó como prueba de estrés de drift. En el modelo ARS la pandemia queda dentro del entrenamiento. |
+| Cámaras ARS | Los nombres de corredor cambian entre archivos (p. ej. "Carrera 57 - Avenida Ferrocarril", "San Juan"). | Se unifican con un diccionario al nombre del catálogo de tramos. |
+| Cámaras ARS | Algunas filas traen latitud y longitud intercambiadas. | Se corrigen cuando la latitud cae fuera de 5-7. |
+| Cámaras ARS | 233 de 2.601 archivos diarios no tienen lecturas de los 22 tramos. | Se omiten; los rezagos no cruzan huecos. |
+| Cámaras ARS | La cámara mide velocidad en un punto (cámara/carril), no el tiempo de viaje del corredor. | Velocidad = promedio horario de las lecturas de 2-110 km/h; tiempo de viaje = longitud del tramo (catálogo GT) / velocidad. |
 | Siniestros | La base cuenta incidentes; el cierre oficial de 2025 cuenta personas fallecidas, y la base termina en agosto de 2025. | Se grafican incidentes fatales por año y se cita aparte el cierre oficial (276). |
 | EOD 2025 | La API identifica las macrozonas solo con números. | El diccionario id → municipio/macrozona se extrajo del visor oficial (`data/reference/eod2025_macrozonas.csv`). |
 
 ## Limitación principal
 
-La serie de velocidad abierta más reciente termina en diciembre de 2020 y la EOD es de 2025. El modelo aprende la dinámica de la congestión con datos 2017-2020 y usa la EOD 2025 como prior de demanda por hora y por macrozona. Para operar en 2026 hay que reentrenar con el feed actual del SIMM: basta con poner un CSV con las mismas columnas en `data/raw/` y correr `python run_pipeline.py`.
+El modelo actual aprende la dinámica de la congestión con las cámaras ARS (sep-2019 a dic-2023), se valida en 2024, se prueba en 2025 y se vigila en ene-sep 2026; usa la EOD 2025 como prior de demanda por hora y por macrozona. La exportación ARS no se descarga sola: para reentrenar con una nueva exportación se corre `python scripts/convertir_ars_a_sensores.py` y luego `python scripts/reentrenar_con_ars.py`. La serie abierta GT (2017-2020) sigue disponible con `python run_pipeline.py`.

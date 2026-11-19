@@ -128,3 +128,13 @@ def test_replay_coincide_con_predict(client):
 def test_replay_fecha_sin_datos(client):
     assert client.get("/replay/2015-01-01").status_code == 404
     assert client.get("/replay/no-es-fecha").status_code == 422
+
+
+def test_valor(client):
+    r = client.get("/valor")
+    assert r.status_code == 200, r.text
+    v = r.json()
+    assert v["anticipados"] <= v["colapsos_sin_aviso"] <= v["colapsos_reales"]
+    assert v["detectados"] <= v["alertas"] and 0 < v["pct_colapsos_sin_aviso"] < 1
+    dias = client.get("/dias?periodo=test").json()
+    assert v["colapsos_reales"] == sum(d["colapsos_reales"] for d in dias)
